@@ -1,0 +1,10 @@
+node_modules
+dist
+test-results
+.playwright-mcp
+.tanstack
+.svelte-kit
+output
+.env
+.DS_Store
+*.png
