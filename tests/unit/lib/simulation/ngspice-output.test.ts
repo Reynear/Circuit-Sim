@@ -1,24 +1,7 @@
-import { parseNgspiceAsciiRawOutput } from "./ngspice-output"
-import type { SpiceTraceBinding } from "./spice-netlist"
+import { parseNgspiceAsciiRawOutput } from "@/server/simulation/engines/ngspice-output"
 
 describe("ngspice raw output parser", () => {
   it("parses ASCII raw voltage and current traces with bindings", () => {
-    const bindings: SpiceTraceBinding[] = [
-      {
-        expression: "V(OUT)",
-        metric: "voltage",
-        unit: "V",
-        targetId: "OUT",
-        targetName: "V(OUT)",
-      },
-      {
-        expression: "@r1[i]",
-        metric: "current",
-        unit: "A",
-        targetId: "sym_r1",
-        targetName: "R1",
-      },
-    ]
     const parsed = parseNgspiceAsciiRawOutput(
       `Title: demo
 Plotname: Transient Analysis
@@ -36,21 +19,13 @@ Values:
 1 0.001
   2
   0.002
-`,
-      bindings,
-    )
+`)
 
     expect(parsed.errors).toEqual([])
-    expect(parsed.traces).toHaveLength(2)
-    expect(parsed.traces[0]).toMatchObject({
-      metric: "voltage",
-      targetId: "OUT",
-    })
-    expect(parsed.traces[1]).toMatchObject({
-      metric: "current",
-      targetId: "sym_r1",
-    })
-    expect(parsed.traces[1]?.points[1]).toEqual({ t: 0.001, v: 0.002 })
+    expect(parsed.series).toHaveLength(2)
+    expect(parsed.series[0]?.expression).toBe("v(out)")
+    expect(parsed.series[1]?.expression).toBe("i(@r1[i])")
+    expect(parsed.series[1]?.points[1]).toEqual({ t: 0.001, v: 0.002 })
   })
 
   it("parses Fortran D exponent values from ngspice raw output", () => {
@@ -70,7 +45,7 @@ Values:
 `)
 
     expect(parsed.errors).toEqual([])
-    expect(parsed.traces[0]?.points).toEqual([
+    expect(parsed.series[0]?.points).toEqual([
       { t: 0, v: 1.5 },
       { t: 0.001, v: 2.5 },
     ])

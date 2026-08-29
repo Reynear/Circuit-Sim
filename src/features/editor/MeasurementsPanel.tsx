@@ -1,33 +1,36 @@
 import { useState } from "react"
 import { WaveformChart } from "./WaveformChart"
+import { formatMeasurement, getNetVoltageColor } from "@/browser/simulation/display"
+import { useEditorState } from "@/browser/editor/editor-state"
 import {
-  formatMeasurement,
-  getNetVoltageColor,
-} from "../../lib/simulation/measurements"
-import { useEditorStore } from "../../lib/schematic/editor-store"
-import type { SimulationMetric, WaveformTrace } from "../../lib/simulation/types"
+  availableSignalMetrics,
+  displaySignals,
+  parseSignalMetric,
+  type SignalMetric,
+} from "@circuit-sim/core/simulation/signals"
 
 type ScopeLayout = "stacked" | "unstacked" | "combined" | "separate"
 
 const defaultScopeLayout: ScopeLayout = "stacked"
 
 export function MeasurementsPanel() {
-  const report = useEditorStore((state) => state.measurements)
-  const [metric, setMetric] = useState<SimulationMetric>("voltage")
+  const report = useEditorState((state) => state.observations)
+  const [metric, setMetric] = useState<SignalMetric>("voltage")
 
   if (!report) {
     return (
       <section className="panel-content">
-        <p className="muted">No circuit is loaded.</p>
+        <p className="muted">
+          Run a simulation to see measured values. Measurements are taken from
+          the most recent simulation run.
+        </p>
       </section>
     )
   }
 
-  const metrics = availableMetrics(report.scopeTraces)
+  const metrics = availableSignalMetrics(report.signals)
   const metricOptions = metrics.length > 0 ? metrics : [metric]
-  const visibleTraces = report.scopeTraces.filter(
-    (trace) => (trace.metric ?? "voltage") === metric,
-  )
+  const visibleSignals = displaySignals(report.signals, metric)
 
   return (
     <section className="panel-content measurements-panel" data-testid="measurements-panel">
@@ -35,7 +38,8 @@ export function MeasurementsPanel() {
         <div>
           <h2>Measurements</h2>
           <p className="muted">
-            Topology: {report.topology === "unknown" ? "unsupported" : report.topology}
+            Run {report.run.id.slice(0, 8)} · {report.run.engine} · {report.run.status}
+            {report.run.stale ? " · stale — circuit changed since this run" : ""}
           </p>
         </div>
       </div>
@@ -128,7 +132,9 @@ export function MeasurementsPanel() {
                 Metric
                 <select
                   value={metric}
-                  onChange={(event) => setMetric(event.target.value as SimulationMetric)}
+                  onChange={(event) =>
+                    setMetric(parseSignalMetric(event.target.value) ?? "voltage")
+                  }
                 >
                   {metricOptions.map((candidate) => (
                     <option key={candidate} value={candidate}>
@@ -142,7 +148,7 @@ export function MeasurementsPanel() {
           <ScopeTraceLayout
             layout={defaultScopeLayout}
             metric={metric}
-            traces={visibleTraces}
+            traces={visibleSignals}
           />
         </section>
       </div>
@@ -162,8 +168,8 @@ function ScopeTraceLayout({
   traces,
 }: {
   layout: ScopeLayout
-  metric: SimulationMetric
-  traces: WaveformTrace[]
+  metric: SignalMetric
+  traces: ReadonlyArray<ReturnType<typeof displaySignals>[number]>
 }) {
   if (layout === "combined") {
     return (
@@ -188,7 +194,7 @@ function ScopeTraceLayout({
     <div className={className} data-testid={testId}>
       {traces.length > 0 ? (
         traces.map((trace) => (
-          <ScopePane key={trace.id} title={trace.name} traces={[trace]} />
+          <ScopePane key={trace.name} title={trace.name} traces={[trace]} />
         ))
       ) : (
         <ScopePane title={`${metricLabel(metric)} scopes`} traces={[]} />
@@ -202,20 +208,13 @@ function ScopePane({
   traces,
 }: {
   title: string
-  traces: WaveformTrace[]
+  traces: ReadonlyArray<ReturnType<typeof displaySignals>[number]>
 }) {
   return (
     <section className="scope-pane" data-testid="scope-pane">
       <div className="scope-pane-title">{title}</div>
       <WaveformChart traces={traces} />
     </section>
-  )
-}
-
-function availableMetrics(traces: Array<{ metric?: SimulationMetric }>): SimulationMetric[] {
-  const metrics = new Set(traces.map((trace) => trace.metric ?? "voltage"))
-  return (["voltage", "current", "power"] as SimulationMetric[]).filter((candidate) =>
-    metrics.has(candidate),
   )
 }
 
@@ -232,7 +231,7 @@ function scopeLayoutLabel(layout: ScopeLayout): string {
   }
 }
 
-function metricLabel(metric: SimulationMetric): string {
+function metricLabel(metric: SignalMetric): string {
   switch (metric) {
     case "current":
       return "Current"

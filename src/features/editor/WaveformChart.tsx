@@ -1,6 +1,10 @@
-import type { WaveformTrace } from "../../lib/simulation/types"
+import type { Signal } from "@circuit-sim/core/simulation/signals"
 
-export function WaveformChart({ traces }: { traces: WaveformTrace[] }) {
+export function WaveformChart({
+  traces,
+}: {
+  traces: ReadonlyArray<Signal>
+}) {
   const finiteTraces = traces
     .map((trace) => ({
       ...trace,
@@ -46,7 +50,7 @@ export function WaveformChart({ traces }: { traces: WaveformTrace[] }) {
         </text>
         {finiteTraces.map((trace, index) => (
           <polyline
-            key={trace.id}
+            key={trace.name}
             fill="none"
             stroke={colors[index % colors.length]}
             strokeWidth={2}
@@ -56,7 +60,7 @@ export function WaveformChart({ traces }: { traces: WaveformTrace[] }) {
       </svg>
       <div className="legend">
         {finiteTraces.map((trace, index) => (
-          <span key={trace.id}>
+          <span key={trace.name}>
             <i style={{ background: colors[index % colors.length] }} />
             {trace.name}
             {trace.unit ? ` (${trace.unit})` : ""}

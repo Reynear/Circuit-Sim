@@ -1,5 +1,5 @@
-import type { CircuitProject } from "../schematic/types"
-import type { SpiceNetlistBuild } from "./spice-netlist"
+import type { CircuitProject } from "@circuit-sim/core/circuit/project"
+import type { SpiceNetlistBuild } from "@circuit-sim/core/simulation/spice-netlist"
 
 export type SpiceRuntimeLimits = {
   maxObjects: number
@@ -31,7 +31,7 @@ export type SpiceRuntimeLimitReport = {
 }
 
 export function runtimeLimitsFromEnv(
-  env: Record<string, string | undefined>,
+  env: NodeJS.ProcessEnv,
 ): SpiceRuntimeLimits {
   return {
     maxObjects: numberFromEnv(env.SPICE_MAX_OBJECTS, defaultSpiceRuntimeLimits.maxObjects),
@@ -71,13 +71,8 @@ export function validateSpiceRuntimeLimits({
 }): SpiceRuntimeLimitReport {
   const errors: string[] = []
   const warnings: string[] = []
-  const objectCount = project.sheets.reduce(
-    (sum, sheet) => sum + sheet.objects.length,
-    0,
-  )
-  const simulation = project.simulations[0]
-  const durationMs = simulation?.durationMs ?? 10
-  const timeStepMs = simulation?.timeStepMs ?? 0.1
+  const objectCount = project.objects.length
+  const { durationMs, timeStepMs } = project.analysis
   const estimatedPoints =
     timeStepMs > 0 ? Math.ceil(durationMs / timeStepMs) + 1 : Number.POSITIVE_INFINITY
   const netlistBytes = new TextEncoder().encode(build.netlist).length
@@ -87,9 +82,9 @@ export function validateSpiceRuntimeLimits({
       `Circuit has ${objectCount} objects; server SPICE limit is ${limits.maxObjects}.`,
     )
   }
-  if (Object.keys(build.nodeNameByNetId).length > limits.maxNets) {
+  if (build.nodeNameByNetName.size > limits.maxNets) {
     errors.push(
-      `Circuit has ${Object.keys(build.nodeNameByNetId).length} nets; server SPICE limit is ${limits.maxNets}.`,
+      `Circuit has ${build.nodeNameByNetName.size} nets; server SPICE limit is ${limits.maxNets}.`,
     )
   }
   if (durationMs > limits.maxDurationMs) {

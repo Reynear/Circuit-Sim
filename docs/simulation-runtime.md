@@ -3,12 +3,41 @@
 The browser never runs the native SPICE binary. The client sends the
 `CircuitProject` document to a TanStack server function, which:
 
-1. Extracts the schematic netlist.
-2. Generates a bounded ngspice transient netlist.
-3. Writes a temporary `.cir` file.
-4. Runs `ngspice -b -r result.raw -o ngspice.log circuit.cir`.
-5. Parses ASCII rawfile traces plus ngspice log diagnostics.
-6. Returns waveform traces, status, diagnostics, and suggested fixes to the UI.
+1. Decodes the unversioned canonical project schema.
+2. Generates `ElectricalCircuit` and a transient SPICE netlist from it.
+3. Applies the same runtime preflight limits for either explicit engine choice.
+4. Runs the selected `spicey` engine, or writes a temporary `.cir` file and
+   runs `ngspice -b -r result.raw -o ngspice.log circuit.cir`.
+5. Size-checks ngspice output files before reading and parses transient signals
+   plus diagnostics.
+6. Returns `SimulationOutput`; the client derives status from diagnostics and
+   persistence adds run identity, time, and project-snapshot linkage.
+
+## Code boundaries
+
+- `packages/core/src/circuit/` owns the canonical project, electrical
+  projection, exact-coordinate connectivity, and the small schema-derived
+  `CircuitEdit` algebra. It does not own hit testing, selection bounds, snap
+  routing, SVG glyphs, or a renderer scene model.
+- `packages/core/src/simulation/` owns netlist generation and the canonical
+  simulation input/output types.
+- `src/server/simulation/run-simulation.server.ts` owns engine selection and
+  shared preflight policy.
+- `src/server/simulation/engines/` owns Spicey execution, native ngspice
+  process/files, and ngspice-specific output parsing.
+- `src/server/simulation/spice.functions.ts` only decodes the request and
+  encodes the result at the TanStack boundary.
+- `src/browser/simulation/` owns browser Atom orchestration and persistence of
+  the returned run; it does not execute a solver.
+- `src/browser/editor/` owns interaction geometry, proximity-based snap
+  proposals, gesture state, and editor orchestration. Every project change is
+  expressed as `PutObject` or `RemoveObjects` before applying.
+- `src/features/editor/` owns direct SVG rendering, hit areas, previews, and the
+  consolidated visual overlays.
+
+The core package typechecks without React, DOM, Node, Dexie, TanStack, or
+simulator dependencies. Core and server tests use Node; browser tests alone use
+jsdom.
 
 Local development looks for `NGSPICE_BIN` first, then common Homebrew/Linux
 paths. Production should ship ngspice in the server image. The included
@@ -25,7 +54,7 @@ the container. It requires a running Docker daemon.
 
 ## Runtime Limits
 
-The server blocks oversized simulations before launching ngspice.
+The server blocks oversized simulations before launching either engine.
 
 | Environment variable | Default |
 | --- | ---: |
@@ -49,5 +78,6 @@ TanStack app, install the native `ngspice` package in the runtime image, and run
 `vite start` with `HOST=0.0.0.0`.
 
 Serverless runtimes that disallow `child_process.spawn`, native binaries, or
-temporary files should use the `spicey` fallback engine or move ngspice into a
-separate worker/container service behind an authenticated internal API.
+temporary files must select `spicey` explicitly or move ngspice into a separate
+worker/container service behind an authenticated internal API. The server never
+substitutes one engine for another.

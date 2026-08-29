@@ -1,59 +1,64 @@
 import { useServerFn } from "@tanstack/react-start"
-import { useEffect, useState } from "react"
+import { Cause, Option, Schema } from "effect"
+import { useAtom } from "@effect/atom-react"
+import { useEffect, useMemo, useState } from "react"
 import { WaveformChart } from "./WaveformChart"
-import { createId } from "../../lib/ids"
-import { recordSimulationRun } from "../../lib/persistence/project-store"
-import type { SimulationMetric, SimulationResult } from "../../lib/simulation/types"
-import { useEditorStore } from "../../lib/schematic/editor-store"
+import type {
+  SimulationOutput,
+  SpiceEnginePreference,
+} from "@circuit-sim/core/simulation/result"
+import {
+  simulationStatus,
+  SpiceEnginePreferenceSchema,
+} from "@circuit-sim/core/simulation/result"
+import {
+  availableSignalMetrics,
+  availableSignalTargets,
+  displaySignals,
+  firstSignalMetric,
+  parseSignalMetric,
+  signalTarget,
+  type SignalMetric,
+} from "@circuit-sim/core/simulation/signals"
+import { useEditorState } from "@/browser/editor/editor-state"
 import { runSpiceSimulationOnServer } from "../../server/simulation/spice.functions"
+import {
+  makeSimulationRunAtom,
+  simulationRequestErrorMessage,
+} from "@/browser/simulation/run-atom"
 
-type SpiceEnginePreference = "auto" | "ngspice" | "spicey"
-
-export function SimulationPanel({
-  projectId,
-  runToken,
-}: {
-  projectId: string
-  runToken: number
-}) {
-  const project = useEditorStore((state) => state.project)
+export function SimulationPanel({ runToken }: { runToken: number }) {
+  const project = useEditorState((state) => state.project)
   const runServerSimulation = useServerFn(runSpiceSimulationOnServer)
-  const [result, setResult] = useState<SimulationResult | null>(null)
-  const [metric, setMetric] = useState<SimulationMetric>("voltage")
-  const [targetId, setTargetId] = useState("all")
-  const [engine, setEngine] = useState<SpiceEnginePreference>("auto")
-  const [running, setRunning] = useState(false)
+  const simulationRunAtom = useMemo(
+    () => makeSimulationRunAtom(runServerSimulation),
+    [runServerSimulation],
+  )
+  const [simulationRun, executeSimulation] = useAtom(simulationRunAtom, {
+    mode: "promiseExit",
+  })
+  const outcome =
+    simulationRun._tag === "Success" ? simulationRun.value : null
+  const requestError =
+    simulationRun._tag === "Failure"
+      ? Option.getOrUndefined(Cause.findErrorOption(simulationRun.cause))
+      : undefined
+  const savedRun = outcome?._tag === "Saved" ? outcome.run : null
+  const result = outcome
+    ? outcome._tag === "Saved"
+      ? outcome.run
+      : outcome.output
+    : null
+  const [metric, setMetric] = useState<SignalMetric>("voltage")
+  const [target, setTarget] = useState("all")
+  const [engine, setEngine] = useState<SpiceEnginePreference>("ngspice")
+  const setLatestRun = useEditorState((state) => state.setLatestRun)
 
   async function runSimulation() {
     if (!project) {
       return
     }
-    setRunning(true)
-    try {
-      const nextResult = (await runServerSimulation({
-        data: { project, engine },
-      })) as SimulationResult
-      setResult(nextResult)
-      setMetric(firstMetric(nextResult) ?? "voltage")
-      setTargetId("all")
-      await recordSimulationRun({
-        projectId,
-        config: project.simulations[0] ?? null,
-        result: nextResult,
-      })
-    } catch (error) {
-      const failedResult = clientSimulationFailure(error, engine)
-      setResult(failedResult)
-      setMetric("voltage")
-      setTargetId("all")
-      await recordSimulationRun({
-        projectId,
-        config: project.simulations[0] ?? null,
-        result: failedResult,
-      })
-    } finally {
-      setRunning(false)
-    }
+    await executeSimulation({ project, engine })
   }
 
   useEffect(() => {
@@ -62,15 +67,22 @@ export function SimulationPanel({
     }
   }, [runToken])
 
-  const metrics = result ? availableMetrics(result) : []
+  useEffect(() => {
+    if (savedRun) {
+      setMetric(firstSignalMetric(savedRun.signals) ?? "voltage")
+      setTarget("all")
+      setLatestRun(savedRun)
+    }
+  }, [savedRun?.id])
+
+  const metrics = result ? availableSignalMetrics(result.signals) : []
   const metricOptions = metrics.length > 0 ? metrics : [metric]
-  const targets = result ? availableTargets(result, metric) : []
-  const visibleTraces =
-    result?.traces.filter(
-      (trace) =>
-        (trace.metric ?? "voltage") === metric &&
-        (targetId === "all" || (trace.targetId ?? trace.name) === targetId),
-    ) ?? []
+  const targets = result ? availableSignalTargets(result.signals, metric) : []
+  const visibleSignals = result
+    ? displaySignals(result.signals, metric).filter((signal) =>
+        target === "all" ? true : signalTarget(signal.name) === target,
+      )
+    : []
 
   return (
     <section className="panel-content simulation-panel" data-testid="simulation-panel">
@@ -78,11 +90,8 @@ export function SimulationPanel({
         <div>
           <h2>SPICE Simulation</h2>
           <p className="muted">
-            Engine: {result?.engine ?? engine} · status: {result?.status ?? "not run"}
-          </p>
-          <p className="muted">
-            Production path: generate netlist, execute in the TanStack server runtime,
-            parse traces/errors, and return diagnostics to the browser.
+            Engine: {result?.engine ?? engine} · status: {result ? simulationStatus(result) : "not run"}
+            {result ? ` · circuit ${result.circuitHash.slice(0, 8)}` : ""}
           </p>
         </div>
         <div className="simulation-run-controls">
@@ -90,23 +99,38 @@ export function SimulationPanel({
             Engine
             <select
               value={engine}
-              onChange={(event) => setEngine(event.target.value as SpiceEnginePreference)}
+              onChange={(event) =>
+                setEngine(
+                  Schema.decodeUnknownSync(SpiceEnginePreferenceSchema)(
+                    event.target.value,
+                  ),
+                )
+              }
             >
-              <option value="auto">Auto</option>
               <option value="ngspice">ngspice</option>
-              <option value="spicey">spicey fallback</option>
+              <option value="spicey">spicey</option>
             </select>
           </label>
           <button
             className="button primary"
             data-testid="run-spice-simulation"
-            disabled={running}
+            disabled={simulationRun.waiting}
             onClick={() => void runSimulation()}
           >
-            {running ? "Running..." : "Run SPICE Simulation"}
+            {simulationRun.waiting ? "Running..." : "Run SPICE Simulation"}
           </button>
         </div>
       </div>
+      {requestError ? (
+        <p className="issue error" role="alert">
+          {simulationRequestErrorMessage(requestError)}
+        </p>
+      ) : null}
+      {outcome?._tag === "PersistenceFailure" ? (
+        <p className="issue warning" role="alert">
+          The simulation result could not be saved: {outcome.error.operation}.
+        </p>
+      ) : null}
       {result ? (
         <>
           <SimulationStatus result={result} />
@@ -116,9 +140,8 @@ export function SimulationPanel({
               <select
                 value={metric}
                 onChange={(event) => {
-                  const nextMetric = event.target.value as SimulationMetric
-                  setMetric(nextMetric)
-                  setTargetId("all")
+                  setMetric(parseSignalMetric(event.target.value) ?? "voltage")
+                  setTarget("all")
                 }}
               >
                 {metricOptions.map((candidate) => (
@@ -129,28 +152,28 @@ export function SimulationPanel({
               </select>
             </label>
             <label>
-              Component / Node
+              Component / Net
               <select
-                value={targetId}
-                onChange={(event) => setTargetId(event.target.value)}
+                value={target}
+                onChange={(event) => setTarget(event.target.value)}
               >
                 <option value="all">All</option>
-                {targets.map((target) => (
-                  <option key={target.id} value={target.id}>
-                    {target.name}
+                {targets.map((candidate) => (
+                  <option key={candidate} value={candidate}>
+                    {candidate}
                   </option>
                 ))}
               </select>
             </label>
           </div>
-          <WaveformChart traces={visibleTraces} />
+          <WaveformChart traces={visibleSignals} />
           {result.netlist ? (
             <details className="spice-netlist">
               <summary>SPICE netlist</summary>
               <pre>{result.netlist}</pre>
             </details>
           ) : null}
-          {result.diagnostics?.rawOutput ? (
+          {result.diagnostics.rawOutput ? (
             <details className="spice-netlist">
               <summary>Raw simulator output</summary>
               <pre>{result.diagnostics.rawOutput}</pre>
@@ -169,52 +192,22 @@ export function SimulationPanel({
   )
 }
 
-function clientSimulationFailure(
-  error: unknown,
-  engine: SpiceEnginePreference,
-): SimulationResult {
-  const message = error instanceof Error ? error.message : String(error)
-  return {
-    id: createId("sim"),
-    createdAt: new Date().toISOString(),
-    kind: "spice",
-    engine: engine === "spicey" ? "spicey" : "ngspice",
-    status: "failed",
-    traces: [],
-    notes: [
-      "The server simulation request failed before a simulator result was returned.",
-      "Check server logs, NGSPICE_BIN, runtime limits, and deployment sandbox permissions.",
-    ],
-    diagnostics: {
-      warnings: [],
-      errors: [message],
-      suggestions: [
-        "Retry with the spicey fallback engine to separate netlist issues from ngspice runtime issues.",
-      ],
-      unsupportedComponents: [],
-      floatingPins: [],
-    },
-  }
-}
-
-function SimulationStatus({ result }: { result: SimulationResult }) {
+function SimulationStatus({ result }: { result: SimulationOutput }) {
   const diagnostics = result.diagnostics
-  if (!diagnostics) {
-    return null
-  }
+  const status = simulationStatus(result)
   if (
     diagnostics.errors.length === 0 &&
     diagnostics.warnings.length === 0 &&
-    (diagnostics.suggestions?.length ?? 0) === 0 &&
+    diagnostics.suggestions.length === 0 &&
     diagnostics.unsupportedComponents.length === 0 &&
     diagnostics.floatingPins.length === 0
   ) {
     return <p className="issue info">Simulation completed without diagnostics.</p>
   }
   return (
-    <div className={result.status === "failed" ? "issue error" : "issue warning"}>
+    <div className={status === "failed" ? "issue error" : "issue warning"}>
       <strong>
-        {result.status === "failed" ? "Simulation failed" : "Simulation diagnostics"}
+        {status === "failed" ? "Simulation failed" : "Simulation diagnostics"}
       </strong>
       <ul>
         {diagnostics.errors.map((message) => (
@@ -223,7 +216,7 @@ function SimulationStatus({ result }: { result: SimulationResult }) {
         {diagnostics.warnings.map((message) => (
           <li key={`warning-${message}`}>{message}</li>
         ))}
-        {diagnostics.suggestions?.map((message) => (
+        {diagnostics.suggestions.map((message) => (
           <li key={`suggestion-${message}`}>Suggestion: {message}</li>
         ))}
         {diagnostics.unsupportedComponents.length > 0 ? (
@@ -237,37 +230,7 @@ function SimulationStatus({ result }: { result: SimulationResult }) {
   )
 }
 
-function availableMetrics(result: SimulationResult): SimulationMetric[] {
-  const metrics = new Set(
-    result.traces.map((trace) => trace.metric ?? "voltage"),
-  )
-  return (["voltage", "current", "power"] as SimulationMetric[]).filter((metric) =>
-    metrics.has(metric),
-  )
-}
-
-function firstMetric(result: SimulationResult): SimulationMetric | null {
-  return result.traces[0]?.metric ?? null
-}
-
-function availableTargets(
-  result: SimulationResult,
-  metric: SimulationMetric,
-): Array<{ id: string; name: string }> {
-  const targets = new Map<string, string>()
-  for (const trace of result.traces) {
-    if ((trace.metric ?? "voltage") !== metric) {
-      continue
-    }
-    const id = trace.targetId ?? trace.name
-    targets.set(id, trace.targetName ?? trace.name)
-  }
-  return [...targets.entries()]
-    .map(([id, name]) => ({ id, name }))
-    .sort((a, b) => a.name.localeCompare(b.name))
-}
-
-function metricLabel(metric: SimulationMetric): string {
+function metricLabel(metric: SignalMetric): string {
   switch (metric) {
     case "current":
       return "Current"

@@ -1,15 +1,17 @@
-import type { SpiceTraceBinding } from "./spice-netlist"
-import type { SimulationMetric, WaveformTrace } from "./types"
+export type ParsedSignalSeries = {
+  /** Normalized SPICE expression, e.g. `v(n001)` or `@r1[i]`. */
+  expression: string
+  points: Array<{ t: number; v: number }>
+}
 
 export type ParsedNgspiceOutput = {
-  traces: WaveformTrace[]
+  series: ParsedSignalSeries[]
   warnings: string[]
   errors: string[]
 }
 
 export function parseNgspiceAsciiRawOutput(
   rawOutput: string,
-  bindings: SpiceTraceBinding[] = [],
 ): ParsedNgspiceOutput {
   const warnings = diagnosticLines(rawOutput, "warning")
   const errors = diagnosticLines(rawOutput, "error")
@@ -17,11 +19,11 @@ export function parseNgspiceAsciiRawOutput(
   const flags = valueAfterPrefix(lines, "Flags:")?.toLowerCase() ?? ""
   if (flags.includes("binary")) {
     errors.push("Binary ngspice raw output is not supported; expected ASCII raw output.")
-    return { traces: [], warnings, errors }
+    return { series: [], warnings, errors }
   }
   if (flags.includes("complex")) {
     errors.push("Complex ngspice raw output is not supported for waveform plotting yet.")
-    return { traces: [], warnings, errors }
+    return { series: [], warnings, errors }
   }
   const variableCount = numberAfterPrefix(lines, "No. Variables:")
   const pointCount = numberAfterPrefix(lines, "No. Points:")
@@ -33,7 +35,7 @@ export function parseNgspiceAsciiRawOutput(
     variablesIndex === -1 ||
     valuesIndex === -1
   ) {
-    return { traces: [], warnings, errors }
+    return { series: [], warnings, errors }
   }
 
   const variables = lines
@@ -42,10 +44,10 @@ export function parseNgspiceAsciiRawOutput(
     .filter((variable): variable is RawVariable => Boolean(variable))
   const timeVariable = variables.find((variable) => variable.index === 0)
   if (!timeVariable) {
-    return { traces: [], warnings, errors }
+    return { series: [], warnings, errors }
   }
 
-  const series = new Map<number, Array<{ t: number; v: number }>>(
+  const seriesPoints = new Map<number, Array<{ t: number; v: number }>>(
     variables
       .filter((variable) => variable.index !== 0)
       .map((variable) => [variable.index, []]),
@@ -63,34 +65,27 @@ export function parseNgspiceAsciiRawOutput(
       cursor += 1
       const parsed = parseRawValueLine(line)
       if (parsed && Number.isFinite(time) && Number.isFinite(parsed.value)) {
-        series.get(variable.index)?.push({ t: time, v: parsed.value })
+        seriesPoints.get(variable.index)?.push({ t: time, v: parsed.value })
       }
     }
   }
 
-  const bindingByName = buildBindingLookup(bindings)
-  const traces = variables
+  const series = variables
     .filter((variable) => variable.index !== 0)
     .flatMap((variable) => {
-      const points = series.get(variable.index) ?? []
+      const points = seriesPoints.get(variable.index) ?? []
       if (points.length === 0) {
         return []
       }
-      const binding = bindingByName.get(normalizeExpression(variable.name))
       return [
         {
-          id: `ngspice_${sanitizeTraceId(variable.name)}`,
-          name: binding?.targetName ?? normalizeTraceName(variable.name),
-          metric: binding?.metric ?? metricForName(variable.name),
-          unit: binding?.unit ?? unitForName(variable.name),
-          targetId: binding?.targetId ?? variable.name,
-          targetName: binding?.targetName ?? normalizeTraceName(variable.name),
+          expression: normalizeExpression(variable.name),
           points,
         },
       ]
     })
 
-  return { traces, warnings, errors }
+  return { series, warnings, errors }
 }
 
 export function parseNgspicePrintOutput(output: string): ParsedNgspiceOutput {
@@ -104,12 +99,12 @@ export function parseNgspicePrintOutput(output: string): ParsedNgspiceOutput {
 
   const headerIndex = rows.findIndex((line) => /^index\s+time\s+/i.test(line))
   if (headerIndex === -1) {
-    return { traces: [], warnings, errors }
+    return { series: [], warnings, errors }
   }
 
   const headers = rows[headerIndex]!.split(/\s+/)
   const valueHeaders = headers.slice(2)
-  const series = new Map<string, Array<{ t: number; v: number }>>(
+  const seriesByHeader = new Map<string, Array<{ t: number; v: number }>>(
     valueHeaders.map((header) => [header, []]),
   )
 
@@ -126,24 +121,19 @@ export function parseNgspicePrintOutput(output: string): ParsedNgspiceOutput {
       const raw = columns[index + 2]
       const value = raw ? parseSpiceNumber(raw) : Number.NaN
       if (Number.isFinite(value)) {
-        series.get(header)?.push({ t: time, v: value })
+        seriesByHeader.get(header)?.push({ t: time, v: value })
       }
     })
   }
 
-  const traces = [...series.entries()]
+  const series = [...seriesByHeader.entries()]
     .filter(([, points]) => points.length > 0)
     .map(([name, points]) => ({
-      id: `ngspice_${sanitizeTraceId(name)}`,
-      name: normalizeTraceName(name),
-      metric: metricForName(name),
-      unit: unitForName(name),
-      targetId: name,
-      targetName: normalizeTraceName(name),
+      expression: normalizeExpression(name),
       points,
     }))
 
-  return { traces, warnings, errors }
+  return { series, warnings, errors }
 }
 
 type RawVariable = {
@@ -216,44 +206,6 @@ function diagnosticLines(output: string, kind: "warning" | "error"): string[] {
     .map((line) => line.trim())
 }
 
-function buildBindingLookup(
-  bindings: SpiceTraceBinding[],
-): Map<string, SpiceTraceBinding> {
-  const lookup = new Map<string, SpiceTraceBinding>()
-  for (const binding of bindings) {
-    for (const key of expressionAliases(binding.expression)) {
-      lookup.set(key, binding)
-    }
-  }
-  return lookup
-}
-
-function expressionAliases(expression: string): string[] {
-  const normalized = normalizeExpression(expression)
-  if (normalized.startsWith("@")) {
-    return [normalized, normalizeExpression(`I(${expression})`)]
-  }
-  return [normalized]
-}
-
 function normalizeExpression(expression: string): string {
   return expression.replace(/\s+/g, "").toLowerCase()
-}
-
-function normalizeTraceName(name: string): string {
-  return name.toUpperCase().startsWith("V(") || name.toUpperCase().startsWith("I(")
-    ? name
-    : `V(${name})`
-}
-
-function metricForName(name: string): SimulationMetric {
-  return name.toUpperCase().startsWith("I(") ? "current" : "voltage"
-}
-
-function unitForName(name: string): "V" | "A" {
-  return metricForName(name) === "current" ? "A" : "V"
-}
-
-function sanitizeTraceId(name: string): string {
-  return name.replace(/[^A-Za-z0-9_]/g, "_")
 }
