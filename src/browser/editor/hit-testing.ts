@@ -1,37 +1,28 @@
-import { distance } from "./geometry"
-import {
-  getAnnotationLeadEnd,
-  hasAnnotationLead,
-  isLeadAnnotationObject,
-} from "./annotations"
-import { getSymbolWorldBounds } from "./symbol-geometry"
-import { getSymbolPinWorldPositions } from "./transforms"
-import {
-  leadAnnotationBodyRects,
-  leadAnnotationBodySegments,
-} from "./lead-annotation-geometry"
+import { distance } from "@circuit-sim/core/circuit/geometry"
+import { getPinPosts } from "@circuit-sim/core/circuit/component-geometry"
+import { getWorldBounds } from "./component-geometry"
 import type {
   BoxObject,
   LineObject,
   SchematicObject,
-  SymbolObject,
-  Vec2,
+  Component,
+  Point,
   WireObject,
-} from "./types"
+} from "@circuit-sim/core/circuit/project"
 
 export type HitTarget =
   | { type: "object"; objectId: string }
-  | { type: "pin"; objectId: string; componentPinId: string }
+  | { type: "pin"; objectId: string; pin: string }
   | { type: "wire"; objectId: string }
 
 export const MOUSE_HIT_TOLERANCE = 10
 
-export function hitTestSymbol(
-  point: Vec2,
-  symbol: SymbolObject,
+function hitTestComponent(
+  point: Point,
+  component: Component,
   tolerance = 6,
 ): boolean {
-  const bounds = getSymbolWorldBounds(symbol)
+  const bounds = getWorldBounds(component)
   return (
     point.x >= bounds.x - tolerance &&
     point.x <= bounds.x + bounds.width + tolerance &&
@@ -40,46 +31,22 @@ export function hitTestSymbol(
   )
 }
 
-export function hitTestWire(
-  point: Vec2,
-  wire: WireObject,
-  tolerance = 6,
-): boolean {
-  return hitDistanceForWire(point, wire, tolerance) !== null
-}
-
-export function hitTestLine(
-  point: Vec2,
-  line: LineObject,
-  tolerance = 6,
-): boolean {
-  return hitDistanceForLine(point, line, tolerance) !== null
-}
-
-export function hitTestBox(
-  point: Vec2,
-  box: BoxObject,
-  tolerance = 6,
-): boolean {
-  return hitDistanceForBox(point, box, tolerance) !== null
-}
-
 export function hitTestObjects(
-  point: Vec2,
-  objects: SchematicObject[],
+  point: Point,
+  objects: ReadonlyArray<SchematicObject>,
   tolerance = 6,
 ): HitTarget | null {
   const topmostObjects = [...objects].reverse()
   for (const object of topmostObjects) {
-    if (object.kind === "symbol") {
-      const pin = getSymbolPinWorldPositions(object).find(
+    if (object.kind === "component") {
+      const pin = getPinPosts(object).find(
         (candidate) => distance(candidate.position, point) <= tolerance,
       )
       if (pin) {
         return {
           type: "pin",
           objectId: object.id,
-          componentPinId: pin.componentPinId,
+          pin: pin.pin,
         }
       }
     }
@@ -106,15 +73,15 @@ export function hitTestObjects(
 }
 
 function hitDistanceForObject(
-  point: Vec2,
+  point: Point,
   object: SchematicObject,
   tolerance: number,
 ): number | null {
-  if (object.kind === "symbol") {
-    if (!hitTestSymbol(point, object, tolerance)) {
+  if (object.kind === "component") {
+    if (!hitTestComponent(point, object, tolerance)) {
       return null
     }
-    return distanceToRect(point, getSymbolWorldBounds(object))
+    return distanceToRect(point, getWorldBounds(object))
   }
   if (object.kind === "wire") {
     return hitDistanceForWire(point, object, tolerance)
@@ -125,24 +92,9 @@ function hitDistanceForObject(
   if (object.kind === "box") {
     return hitDistanceForBox(point, object, tolerance)
   }
-  if (isLeadAnnotationObject(object) && hasAnnotationLead(object)) {
-    const leadEnd = getAnnotationLeadEnd(object)
-    const distances = [
-      distance(point, object.position),
-      distance(point, leadEnd),
-      distanceToSegment(point, object.position, leadEnd),
-      ...leadAnnotationBodyRects(object).map((rect) => distanceToRect(point, rect)),
-      ...leadAnnotationBodySegments(object).map((segment) =>
-        distanceToSegment(point, segment.start, segment.end),
-      ),
-    ]
-    const hitDistance = Math.min(...distances)
-    return hitDistance <= tolerance ? hitDistance : null
-  }
   if (
     object.kind === "ground" ||
     object.kind === "probe" ||
-    object.kind === "junction" ||
     object.kind === "net-label" ||
     object.kind === "text"
   ) {
@@ -153,7 +105,7 @@ function hitDistanceForObject(
 }
 
 function hitDistanceForWire(
-  point: Vec2,
+  point: Point,
   wire: WireObject,
   tolerance: number,
 ): number | null {
@@ -169,7 +121,7 @@ function hitDistanceForWire(
 }
 
 function hitDistanceForLine(
-  point: Vec2,
+  point: Point,
   line: LineObject,
   tolerance: number,
 ): number | null {
@@ -178,7 +130,7 @@ function hitDistanceForLine(
 }
 
 function hitDistanceForBox(
-  point: Vec2,
+  point: Point,
   box: BoxObject,
   tolerance: number,
 ): number | null {
@@ -202,7 +154,7 @@ function hitDistanceForBox(
 }
 
 function distanceToRect(
-  point: Vec2,
+  point: Point,
   rect: { x: number; y: number; width: number; height: number },
 ): number {
   const dx = Math.max(rect.x - point.x, 0, point.x - (rect.x + rect.width))
@@ -210,7 +162,7 @@ function distanceToRect(
   return Math.hypot(dx, dy)
 }
 
-function distanceToSegment(point: Vec2, start: Vec2, end: Vec2): number {
+function distanceToSegment(point: Point, start: Point, end: Point): number {
   const dx = end.x - start.x
   const dy = end.y - start.y
   const lengthSquared = dx * dx + dy * dy

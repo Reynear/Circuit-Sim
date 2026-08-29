@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest"
 import {
   objectsMatchingSelectionRect,
   rectFromPoints,
-} from "./selection-rect"
-import type { BoxObject, LineObject } from "./types"
+} from "@/browser/editor/selection-rect"
+import type { BoxObject, LineObject } from "@circuit-sim/core/circuit/project"
 
 describe("selection rectangle matching", () => {
   const line: LineObject = {

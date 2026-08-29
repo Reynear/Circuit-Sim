@@ -1,11 +1,9 @@
-import { hasAnnotationLead, isLeadAnnotationObject } from "./annotations"
-import { leadAnnotationBounds } from "./lead-annotation-geometry"
-import { getSymbolWorldBounds } from "./symbol-geometry"
-import type { SchematicObject, Vec2 } from "./types"
+import { getWorldBounds } from "./component-geometry"
+import type { SchematicObject, Point } from "@circuit-sim/core/circuit/project"
 
 export type SelectionRect = { x: number; y: number; width: number; height: number }
 
-export function rectFromPoints(a: Vec2, b: Vec2): SelectionRect {
+export function rectFromPoints(a: Point, b: Point): SelectionRect {
   const x = Math.min(a.x, b.x)
   const y = Math.min(a.y, b.y)
   return {
@@ -17,7 +15,7 @@ export function rectFromPoints(a: Vec2, b: Vec2): SelectionRect {
 }
 
 export function objectsMatchingSelectionRect(
-  objects: SchematicObject[],
+  objects: ReadonlyArray<SchematicObject>,
   rect: SelectionRect,
 ): string[] {
   return rect.width === 0 && rect.height === 0
@@ -41,7 +39,7 @@ export function objectMatchesSelectionRect(
   return rectIntersectsRect(bounds, rect)
 }
 
-export function mergedObjectBounds(objects: SchematicObject[]): SelectionRect | null {
+export function mergedObjectBounds(objects: ReadonlyArray<SchematicObject>): SelectionRect | null {
   const bounds = objects
     .map((object) => objectBounds(object))
     .filter((bound): bound is SelectionRect => Boolean(bound))
@@ -61,8 +59,8 @@ export function mergedObjectBounds(objects: SchematicObject[]): SelectionRect | 
 }
 
 export function objectBounds(object: SchematicObject): SelectionRect | null {
-  if (object.kind === "symbol") {
-    return getSymbolWorldBounds(object)
+  if (object.kind === "component") {
+    return getWorldBounds(object)
   }
   if (object.kind === "wire") {
     const xs = object.points.map((point) => point.x)
@@ -95,9 +93,6 @@ export function objectBounds(object: SchematicObject): SelectionRect | null {
       width: Math.abs(object.end.x - object.start.x) + 16,
       height: Math.abs(object.end.y - object.start.y) + 16,
     }
-  }
-  if (isLeadAnnotationObject(object) && hasAnnotationLead(object)) {
-    return leadAnnotationBounds(object, 18)
   }
   if ("position" in object) {
     return {

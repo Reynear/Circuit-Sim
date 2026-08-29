@@ -39,7 +39,7 @@ export function serializeSchematicSvg(
   sourceSvg: SVGSVGElement,
   options: SchematicSvgExportOptions = {},
 ): string {
-  const clone = sourceSvg.cloneNode(true) as SVGSVGElement
+  const clone = sourceSvg.ownerDocument.importNode(sourceSvg, true)
   const { width, height } = dimensionsForSvg(sourceSvg)
 
   inlineComputedStyles(sourceSvg, clone)

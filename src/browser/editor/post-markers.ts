@@ -1,4 +1,4 @@
-import type { Vec2 } from "./types"
+import type { Point } from "@circuit-sim/core/circuit/project"
 
 export type SquareMarker = {
   x: number
@@ -18,7 +18,7 @@ export const POST_HANDLE_SIZE = 7
 export const GRABBED_HANDLE_SIZE = 9
 
 export function squareMarker(
-  position: Vec2,
+  position: Point,
   size = POST_HANDLE_SIZE,
 ): SquareMarker {
   const offset = Math.floor(size / 2)
@@ -31,7 +31,7 @@ export function squareMarker(
 }
 
 export function ovalMarker(
-  position: Vec2,
+  position: Point,
   size = POST_HANDLE_SIZE,
 ): OvalMarker {
   const square = squareMarker(position, size)

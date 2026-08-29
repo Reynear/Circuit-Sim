@@ -3,8 +3,8 @@ import {
   SELECT_DRAG_DELAY_MS,
   hasSelectDragDelayElapsed,
   nearestConnectionSnapPoint,
-} from "./editor-interaction"
-import type { SchematicObject } from "./types"
+} from "@/browser/editor/interaction"
+import type { SchematicObject } from "@circuit-sim/core/circuit/project"
 
 describe("schematic interaction timing", () => {
   it("waits 150ms before select-mode object drags become drag-selected", () => {
@@ -33,7 +33,7 @@ describe("schematic connection snapping", () => {
       nearestConnectionSnapPoint(
         { x: 44, y: 7 },
         [wire],
-        { gridSize: 20, tolerance: 13 },
+        13,
       ),
     ).toEqual({ x: 40, y: 0 })
   })
@@ -60,7 +60,7 @@ describe("schematic connection snapping", () => {
       nearestConnectionSnapPoint(
         { x: 41, y: 7 },
         objects,
-        { gridSize: 20, tolerance: 13 },
+        13,
       ),
     ).toEqual({ x: 40, y: 8 })
   })

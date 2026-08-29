@@ -1,4 +1,4 @@
-import { serializeSchematicSvg } from "./svg-export"
+import { serializeSchematicSvg } from "@/browser/export/svg-export"
 
 describe("svg-export", () => {
   it("serializes the schematic canvas as standalone SVG", () => {

@@ -1,4 +1,4 @@
-import type { TextObject } from "./types"
+import type { TextObject } from "@circuit-sim/core/circuit/project"
 
 export const DEFAULT_TEXT_SIZE = 24
 export const TEXT_LINE_GAP = 3

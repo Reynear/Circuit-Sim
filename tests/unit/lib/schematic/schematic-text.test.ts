@@ -4,7 +4,7 @@ import {
   parseTextSize,
   splitTextLines,
   textLineY,
-} from "./schematic-text"
+} from "@/browser/editor/text"
 
 describe("schematic-text", () => {
   it("normalizes note text sizing and line layout", () => {

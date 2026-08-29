@@ -3,7 +3,7 @@ import {
   GRABBED_HANDLE_SIZE,
   ovalMarker,
   squareMarker,
-} from "./post-markers"
+} from "@/browser/editor/post-markers"
 
 describe("squareMarker", () => {
   it("matches CircuitJS fillRect geometry for normal and grabbed handles", () => {
