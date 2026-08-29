@@ -1,8 +1,8 @@
 import { act } from "react"
 import { createRoot } from "react-dom/client"
 import { describe, expect, it } from "vitest"
-import type { WireObject } from "../../../lib/schematic/types"
-import { WireEditLayer } from "./WireEditLayer"
+import type { WireObject } from "@circuit-sim/core/circuit/project"
+import { WireEditLayer } from "@/features/editor/layers/WireEditLayer"
 
 describe("WireEditLayer", () => {
   it("shows only endpoint handles in schematic post mode", () => {

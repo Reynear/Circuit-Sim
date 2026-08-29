@@ -1,17 +1,14 @@
 import type { PointerEvent } from "react"
-import {
-  getNetVoltageColor,
-  type CircuitMeasurementReport,
-  type VoltageColorOptions,
-} from "../../../lib/simulation/measurements"
-import type { WireObject } from "../../../lib/schematic/types"
+import { getNetVoltageColor, type VoltageColorOptions } from "@/browser/simulation/display"
+import type { RunObservationReport } from "@circuit-sim/core/simulation/run-observations"
+import type { WireObject } from "@circuit-sim/core/circuit/project"
 
 type WireLayerProps = {
-  wires: WireObject[]
+  wires: ReadonlyArray<WireObject>
   selectedIds: string[]
   netHighlightIds?: string[]
   activeWirePoints?: WireObject["points"] | undefined
-  measurements: CircuitMeasurementReport | null
+  measurements: RunObservationReport | null
   showVoltage?: boolean
   voltageColors?: VoltageColorOptions | undefined
   onWirePointerDown: (wireId: string, event: PointerEvent<SVGPolylineElement>) => void
@@ -38,7 +35,7 @@ export function WireLayer({
   return (
     <g className="wire-layer">
       {wires.map((wire) => {
-        const netId = measurements?.netlist.objectToNetId[wire.id]
+        const netId = measurements?.netlist.objectToNetId.get(wire.id)
         const voltage = netId ? netVoltageById.get(netId) : undefined
         const points = wire.points.map((point) => `${point.x},${point.y}`).join(" ")
         const stroke =

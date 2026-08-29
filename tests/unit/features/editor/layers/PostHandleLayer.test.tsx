@@ -1,17 +1,17 @@
 import { render } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
-import { PostHandleLayer } from "./PostHandleLayer"
-import type { SchematicObject, SymbolObject } from "../../../lib/schematic/types"
+import { PostHandleLayer } from "@/features/editor/layers/PostHandleLayer"
+import type { SchematicObject, Component } from "@circuit-sim/core/circuit/project"
 
 describe("PostHandleLayer", () => {
-  it("shows selected symbol primary handles as active square handles", () => {
-    const symbol = resistor("sym_1")
+  it("shows selected component primary handles as active square handles", () => {
+    const component = resistor("sym_1")
     const { container } = render(
       <svg>
         <PostHandleLayer
           hoverObjectId={null}
-          objects={[symbol]}
-          selectedIds={[symbol.id]}
+          objects={[component]}
+          selectedIds={[component.id]}
         />
       </svg>,
     )
@@ -45,7 +45,12 @@ describe("PostHandleLayer", () => {
         probeType: "voltage",
         name: "VP1",
         position: { x: 20, y: 20 },
-        leadEnd: { x: 40, y: 20 },
+      },
+      {
+        kind: "line",
+        id: "line_1",
+        start: { x: 0, y: 60 },
+        end: { x: 80, y: 60 },
       },
     ]
 
@@ -61,19 +66,19 @@ describe("PostHandleLayer", () => {
       </svg>,
     )
 
-    expect(container.querySelectorAll("[data-testid='post-handle']")).toHaveLength(6)
+    expect(container.querySelectorAll("[data-testid='post-handle']")).toHaveLength(7)
     expect(container.querySelectorAll(".post-handle.interactive")).toHaveLength(2)
   })
 
   it("enlarges the grabbed post handle", () => {
-    const symbol = resistor("sym_1")
+    const component = resistor("sym_1")
     const { container } = render(
       <svg>
         <PostHandleLayer
-          grabbedPost={{ objectId: symbol.id, postIndex: 1 }}
+          grabbedPost={{ objectId: component.id, postIndex: 1 }}
           hoverObjectId={null}
-          objects={[symbol]}
-          selectedIds={[symbol.id]}
+          objects={[component]}
+          selectedIds={[component.id]}
         />
       </svg>,
     )
@@ -84,15 +89,15 @@ describe("PostHandleLayer", () => {
   })
 })
 
-function resistor(id: string): SymbolObject {
+function resistor(id: string): Component {
   return {
-    kind: "symbol",
+    kind: "component",
     id,
-    componentDefinitionId: "resistor",
-    symbolDefinitionId: "resistor",
+    type: "resistor",
     refdes: "R1",
     position: { x: 0, y: 0 },
     rotation: 0,
-    props: { value: "1k" },
+    flipped: false,
+    props: { resistanceOhms: 1_000 },
   }
 }

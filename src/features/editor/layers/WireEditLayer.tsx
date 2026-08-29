@@ -1,10 +1,10 @@
 import type { PointerEvent } from "react"
-import { getWirePostIndexes } from "../../../lib/schematic/post-endpoints"
-import type { Vec2, WireObject } from "../../../lib/schematic/types"
+import { getWirePostIndexes } from "@/browser/editor/post-endpoints"
+import type { Point, WireObject } from "@circuit-sim/core/circuit/project"
 
 type WireEditLayerProps = {
   pointMode?: "all" | "post-endpoints"
-  wires: WireObject[]
+  wires: ReadonlyArray<WireObject>
   onPointPointerDown: (
     wireId: string,
     pointIndex: number,
@@ -13,7 +13,7 @@ type WireEditLayerProps = {
   onMidpointPointerDown: (
     wireId: string,
     segmentIndex: number,
-    position: Vec2,
+    position: Point,
     event: PointerEvent<SVGRectElement>,
   ) => void
 }

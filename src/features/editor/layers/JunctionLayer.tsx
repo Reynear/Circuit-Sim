@@ -1,26 +1,16 @@
-import type { MouseEvent, PointerEvent, ReactNode } from "react"
-import {
-  getAnnotationLeadEnd,
-  hasAnnotationLead,
-} from "../../../lib/schematic/annotations"
+import type { MouseEvent, PointerEvent } from "react"
 import type {
   BoxObject,
   GroundObject,
-  JunctionObject,
   LineObject,
   NetLabelObject,
   ProbeObject,
   TextObject,
-} from "../../../lib/schematic/types"
-import {
-  leadAnnotationBodyRects,
-  leadAnnotationBodySegments,
-} from "../../../lib/schematic/lead-annotation-geometry"
+} from "@circuit-sim/core/circuit/project"
 import { TextNote } from "./TextNote"
 import { GroundBars } from "./GroundGlyph"
 
 type RenderableObject =
-  | JunctionObject
   | GroundObject
   | NetLabelObject
   | ProbeObject
@@ -88,18 +78,13 @@ export function JunctionLayer({
 
 function RenderableObjectShape({ object }: { object: RenderableObject }) {
   if (object.kind === "ground") {
-    return (
-      <>
-        <LeadAnnotationHitTargets object={object} />
-        <GroundAnnotationShape object={object} />
-      </>
-    )
+    return <GroundShape />
   }
   if (object.kind === "probe") {
     return (
       <>
-        <LeadAnnotationHitTargets object={object} />
-        <LeadAnnotationBody object={object}>
+        <AnnotationLead x={32} />
+        <g transform="translate(32 0)">
           <circle className="probe" cx={0} cy={0} r={11} />
           <text y={4} textAnchor="middle">
             {object.probeType === "current" ? "I" : "V"}
@@ -107,20 +92,20 @@ function RenderableObjectShape({ object }: { object: RenderableObject }) {
           <text className="refdes" x={0} y={28} textAnchor="middle">
             {object.name}
           </text>
-        </LeadAnnotationBody>
+        </g>
       </>
     )
   }
   if (object.kind === "net-label") {
     return (
       <>
-        <LeadAnnotationHitTargets object={object} />
-        <LeadAnnotationBody object={object}>
+        <AnnotationLead x={17} />
+        <g transform="translate(17 0)">
           <path className="label-flag" d="M 0 0 L 12 -7 L 54 -7 L 54 7 L 12 7 Z" />
           <text x={15} y={4}>
             {object.text}
           </text>
-        </LeadAnnotationBody>
+        </g>
       </>
     )
   }
@@ -173,92 +158,20 @@ function RenderableObjectShape({ object }: { object: RenderableObject }) {
       </>
     )
   }
-  return <circle className="junction-dot" cx={0} cy={0} r={4} />
+  return null
 }
 
-function LeadAnnotationHitTargets({
-  object,
-}: {
-  object: GroundObject | NetLabelObject | ProbeObject
-}) {
-  if (!hasAnnotationLead(object)) {
-    return null
-  }
-  const leadEnd = getAnnotationLeadEnd(object)
-  const dx = leadEnd.x - object.position.x
-  const dy = leadEnd.y - object.position.y
-  const rects = leadAnnotationBodyRects(object)
-  const segments = leadAnnotationBodySegments(object)
-
+function AnnotationLead({ x, y = 0 }: { x: number; y?: number }) {
   return (
-    <g className="annotation-hit-targets">
+    <>
       <line
         className="annotation-hit-area"
         x1={0}
         y1={0}
-        x2={dx}
-        y2={dy}
+        x2={x}
+        y2={y}
       />
-      {rects.map((rect, index) => (
-        <rect
-          key={`rect-${index}`}
-          className="annotation-hit-area"
-          x={rect.x - object.position.x}
-          y={rect.y - object.position.y}
-          width={rect.width}
-          height={rect.height}
-        />
-      ))}
-      {segments.map((segment, index) => (
-        <line
-          key={`segment-${index}`}
-          className="annotation-hit-area"
-          x1={segment.start.x - object.position.x}
-          y1={segment.start.y - object.position.y}
-          x2={segment.end.x - object.position.x}
-          y2={segment.end.y - object.position.y}
-        />
-      ))}
-    </g>
-  )
-}
-
-function GroundAnnotationShape({ object }: { object: GroundObject }) {
-  if (!hasAnnotationLead(object)) {
-    return <GroundShape />
-  }
-  const leadEnd = getAnnotationLeadEnd(object)
-  const dx = leadEnd.x - object.position.x
-  const dy = leadEnd.y - object.position.y
-  return (
-    <>
-      <line className="symbol-stroke annotation-lead" x1={0} y1={0} x2={dx} y2={dy} />
-      <g data-testid="annotation-lead-body" transform={`translate(${dx} ${dy})`}>
-        <GroundBars leadVector={{ x: dx, y: dy }} />
-      </g>
-    </>
-  )
-}
-
-function LeadAnnotationBody({
-  children,
-  object,
-}: {
-  children: ReactNode
-  object: GroundObject | NetLabelObject | ProbeObject
-}) {
-  if (!hasAnnotationLead(object)) {
-    return <>{children}</>
-  }
-  const leadEnd = getAnnotationLeadEnd(object)
-  const dx = leadEnd.x - object.position.x
-  const dy = leadEnd.y - object.position.y
-  return (
-    <>
-      <line className="symbol-stroke annotation-lead" x1={0} y1={0} x2={dx} y2={dy} />
-      <g data-testid="annotation-lead-body" transform={`translate(${dx} ${dy})`}>
-        {children}
-      </g>
+      <line className="symbol-stroke annotation-lead" x1={0} y1={0} x2={x} y2={y} />
     </>
   )
 }
@@ -266,7 +179,7 @@ function LeadAnnotationBody({
 function GroundShape() {
   return (
     <>
-      <line className="symbol-stroke" x1={0} y1={0} x2={0} y2={20} />
+      <AnnotationLead x={0} y={20} />
       <g transform="translate(0 20)">
         <GroundBars leadVector={{ x: 0, y: 20 }} />
       </g>

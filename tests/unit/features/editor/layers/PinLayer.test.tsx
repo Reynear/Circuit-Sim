@@ -1,11 +1,11 @@
 import { act } from "react"
 import { createRoot } from "react-dom/client"
 import { describe, expect, it } from "vitest"
-import type { SymbolObject } from "../../../lib/schematic/types"
-import { PinLayer } from "./PinLayer"
+import type { Component } from "@circuit-sim/core/circuit/project"
+import { PinLayer } from "@/features/editor/layers/PinLayer"
 
 describe("PinLayer", () => {
-  it("keeps drag-post hit targets to primary symbol posts", () => {
+  it("keeps drag-post hit targets to primary component posts", () => {
     const opAmp = testOpAmp("sym_1")
     const container = document.createElement("div")
     document.body.append(container)
@@ -18,7 +18,7 @@ describe("PinLayer", () => {
             <PinLayer
               interactive
               pinMode="primary-posts"
-              symbols={[opAmp]}
+              components={[opAmp]}
               onPinPointerDown={() => undefined}
             />
           </svg>,
@@ -31,8 +31,8 @@ describe("PinLayer", () => {
           cy: node.getAttribute("cy"),
         })),
       ).toEqual([
-        { cx: "-48", cy: "0" },
-        { cx: "56", cy: "0" },
+        { cx: "-48", cy: "-18" },
+        { cx: "0", cy: "40" },
       ])
 
       act(() => {
@@ -40,7 +40,7 @@ describe("PinLayer", () => {
           <svg>
             <PinLayer
               interactive
-              symbols={[opAmp]}
+              components={[opAmp]}
               onPinPointerDown={() => undefined}
             />
           </svg>,
@@ -55,15 +55,15 @@ describe("PinLayer", () => {
   })
 })
 
-function testOpAmp(id: string): SymbolObject {
+function testOpAmp(id: string): Component {
   return {
-    kind: "symbol",
+    kind: "component",
     id,
-    componentDefinitionId: "ideal-op-amp-minus-top",
-    symbolDefinitionId: "ideal-op-amp-minus-top",
+    type: "ideal-op-amp-minus-top",
     refdes: "U1",
     position: { x: 0, y: 0 },
     rotation: 0,
-    props: {},
+    flipped: false,
+    props: { maxOutputVolts: 15, minOutputVolts: -15, gain: 100_000 },
   }
 }

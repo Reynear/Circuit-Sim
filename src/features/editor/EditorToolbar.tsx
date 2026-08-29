@@ -1,4 +1,4 @@
-import { useEditorStore } from "../../lib/schematic/editor-store"
+import { useEditorState } from "@/browser/editor/editor-state"
 
 type EditorToolbarProps = {
   onSave: () => void
@@ -17,32 +17,30 @@ export function EditorToolbar({
   onCopyCircuitImage,
   saveDisabled = false,
 }: EditorToolbarProps) {
-  const issueCount = useEditorStore((state) => state.ercIssues.length)
-  const recompute = useEditorStore((state) => state.recompute)
-  const undo = useEditorStore((state) => state.undo)
-  const redo = useEditorStore((state) => state.redo)
-  const copySelected = useEditorStore((state) => state.copySelected)
-  const pasteClipboard = useEditorStore((state) => state.pasteClipboard)
-  const rotateSelected = useEditorStore((state) => state.rotateSelected)
-  const duplicateSelected = useEditorStore((state) => state.duplicateSelected)
-  const alignSelected = useEditorStore((state) => state.alignSelected)
-  const distributeSelected = useEditorStore((state) => state.distributeSelected)
-  const deleteSelected = useEditorStore((state) => state.deleteSelected)
-  const selectedObjectIds = useEditorStore((state) => state.selectedObjectIds)
-  const project = useEditorStore((state) => state.project)
-  const activeSheetId = useEditorStore((state) => state.activeSheetId)
-  const canUndo = useEditorStore((state) => state.historyPast.length > 0)
-  const canRedo = useEditorStore((state) => state.historyFuture.length > 0)
-  const canPaste = useEditorStore((state) => state.clipboardObjects.length > 0)
+  const issueCount = useEditorState((state) => state.ercIssues.length)
+  const recompute = useEditorState((state) => state.recompute)
+  const undo = useEditorState((state) => state.undo)
+  const redo = useEditorState((state) => state.redo)
+  const copySelected = useEditorState((state) => state.copySelected)
+  const pasteClipboard = useEditorState((state) => state.pasteClipboard)
+  const rotateSelected = useEditorState((state) => state.rotateSelected)
+  const duplicateSelected = useEditorState((state) => state.duplicateSelected)
+  const alignSelected = useEditorState((state) => state.alignSelected)
+  const distributeSelected = useEditorState((state) => state.distributeSelected)
+  const deleteSelected = useEditorState((state) => state.deleteSelected)
+  const selectedObjectIds = useEditorState((state) => state.selectedObjectIds)
+  const project = useEditorState((state) => state.project)
+  const canUndo = useEditorState((state) => state.historyPast.length > 0)
+  const canRedo = useEditorState((state) => state.historyFuture.length > 0)
+  const canPaste = useEditorState((state) => state.clipboardObjects.length > 0)
   const selectedId = selectedObjectIds[0]
-  const activeSheet = project?.sheets.find((sheet) => sheet.id === activeSheetId)
 
   return (
     <header className="editor-toolbar">
       <div className="editor-actionbar">
         <div className="toolbar-group">
           <span className="sheet-readout" data-testid="active-sheet-readout">
-            Sheet: {activeSheet?.name ?? "None"}
+            Circuit: {project?.name ?? "None"}
           </span>
           <button className="button primary" onClick={onSave} disabled={saveDisabled}>
             Save

@@ -11,16 +11,13 @@ export function ShortcutHelpDialog({ open, onClose }: ShortcutHelpDialogProps) {
     return null
   }
 
-  const grouped = editorShortcutHelp.reduce<Record<string, typeof editorShortcutHelp>>(
-    (groups, shortcut) => {
-      const group = shortcut.group
-      return {
-        ...groups,
-        [group]: [...(groups[group] ?? []), shortcut],
-      }
-    },
-    {},
-  )
+  const groups = [...new Set(editorShortcutHelp.map((shortcut) => shortcut.group))]
+    .map((name) => ({
+      name,
+      shortcuts: editorShortcutHelp
+        .filter((shortcut) => shortcut.group === name)
+        .sort((a, b) => a.hotkey.localeCompare(b.hotkey)),
+    }))
 
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}>
@@ -38,13 +35,11 @@ export function ShortcutHelpDialog({ open, onClose }: ShortcutHelpDialogProps) {
           </button>
         </div>
         <div className="shortcut-grid">
-          {Object.entries(grouped).map(([group, registrations]) => (
-            <section key={group}>
-              <h3>{group}</h3>
+          {groups.map((group) => (
+            <section key={group.name}>
+              <h3>{group.name}</h3>
               <ul>
-                {registrations
-                  .sort((a, b) => a.hotkey.localeCompare(b.hotkey))
-                  .map((shortcut) => (
+                {group.shortcuts.map((shortcut) => (
                     <li key={`${shortcut.group}-${shortcut.hotkey}`}>
                       <kbd>{displayHotkey(shortcut.hotkey)}</kbd>
                       <span>{shortcut.name}</span>

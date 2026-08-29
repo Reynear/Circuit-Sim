@@ -2,8 +2,8 @@ import {
   getTextSize,
   splitTextLines,
   textLineY,
-} from "../../../lib/schematic/schematic-text"
-import type { TextObject } from "../../../lib/schematic/types"
+} from "@/browser/editor/text"
+import type { TextObject } from "@circuit-sim/core/circuit/project"
 
 type TextNoteProps = {
   text: TextObject

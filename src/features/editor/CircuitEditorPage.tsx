@@ -1,5 +1,8 @@
 import { Link } from "@tanstack/react-router"
-import { useEffect, useRef, useState } from "react"
+import { Cause, Exit, Option } from "effect"
+import { useContext, useEffect, useRef, useState } from "react"
+import { RegistryContext, useAtom, useAtomValue } from "@effect/atom-react"
+import * as AsyncResult from "effect/unstable/reactivity/AsyncResult"
 import { BottomPanel, type BottomTab } from "./BottomPanel"
 import { ComponentPalette } from "./ComponentPalette"
 import { EditorToolbar } from "./EditorToolbar"
@@ -7,18 +10,25 @@ import { PropertyInspector } from "./PropertyInspector"
 import { SchematicCanvas } from "./SchematicCanvas"
 import { ShortcutHelpDialog } from "./ShortcutHelpDialog"
 import { useEditorShortcuts } from "./useEditorShortcuts"
-import { useLatestProject } from "../../lib/persistence/hooks"
-import { saveProjectSnapshot } from "../../lib/persistence/project-store"
+import {
+  projectAtom,
+  saveProjectAtom,
+} from "@/browser/persistence/atoms"
 import {
   copyPngBlobToClipboard,
   renderSchematicSvgToPngBlob,
   schematicBackgroundColor,
-} from "../../lib/schematic/image-export"
-import { useEditorStore } from "../../lib/schematic/editor-store"
-import type { CircuitProject } from "../../lib/schematic/types"
+} from "@/browser/export/image-export"
+import {
+  EditorAtomProvider,
+  getEditorState,
+  useEditorState,
+} from "@/browser/editor/editor-state"
+import type { CircuitProject } from "@circuit-sim/core/circuit/project"
 
 type CircuitEditorPageProps = {
   projectId: string
+  registry?: import("effect/unstable/reactivity/AtomRegistry").AtomRegistry
 }
 
 declare global {
@@ -30,15 +40,26 @@ declare global {
   }
 }
 
-export function CircuitEditorPage({ projectId }: CircuitEditorPageProps) {
-  const latestProject = useLatestProject(projectId)
+export function CircuitEditorPage({ registry, ...props }: CircuitEditorPageProps) {
+  return (
+    <EditorAtomProvider {...(registry ? { registry } : {})}>
+      <CircuitEditorPageContent {...props} />
+    </EditorAtomProvider>
+  )
+}
+
+function CircuitEditorPageContent({ projectId }: CircuitEditorPageProps) {
+  const registry = useContext(RegistryContext)
+  const latestProject = useAtomValue(projectAtom(projectId))
+  const [saveResult, saveProject] = useAtom(saveProjectAtom, {
+    mode: "promiseExit",
+  })
   const loadedProjectId = useRef<string | null>(null)
-  const project = useEditorStore((state) => state.project)
-  const activeSheetId = useEditorStore((state) => state.activeSheetId)
-  const dirty = useEditorStore((state) => state.dirty)
-  const setProject = useEditorStore((state) => state.setProject)
-  const markSaved = useEditorStore((state) => state.markSaved)
-  const [saving, setSaving] = useState(false)
+  const project = useEditorState((state) => state.project)
+  const dirty = useEditorState((state) => state.dirty)
+  const setProject = useEditorState((state) => state.setProject)
+  const clearProject = useEditorState((state) => state.clearProject)
+  const markSaved = useEditorState((state) => state.markSaved)
   const [activeTab, setActiveTab] = useState<BottomTab>("issues")
   const [simulationRunToken, setSimulationRunToken] = useState(0)
   const [imageCopyStatus, setImageCopyStatus] = useState<
@@ -48,12 +69,17 @@ export function CircuitEditorPage({ projectId }: CircuitEditorPageProps) {
 
   useEffect(() => {
     loadedProjectId.current = null
-  }, [projectId])
+    clearProject()
+  }, [clearProject, projectId])
 
   useEffect(() => {
-    if (latestProject && loadedProjectId.current !== latestProject.id) {
-      setProject(latestProject)
-      loadedProjectId.current = latestProject.id
+    if (
+      latestProject._tag === "Success" &&
+      Option.isSome(latestProject.value) &&
+      loadedProjectId.current !== latestProject.value.value.id
+    ) {
+      setProject(latestProject.value.value)
+      loadedProjectId.current = latestProject.value.value.id
     }
   }, [latestProject, setProject])
 
@@ -68,35 +94,37 @@ export function CircuitEditorPage({ projectId }: CircuitEditorPageProps) {
         setProject(nextProject, { dirty: true })
       },
       getProject() {
-        return useEditorStore.getState().project
+        return getEditorState(registry).project
       },
     }
 
     return () => {
       delete window.__circuitSimTestApi
     }
-  }, [setProject])
+  }, [registry, setProject])
 
   useEffect(() => {
     if (!project || !dirty) {
       return
     }
-    const timeout = window.setTimeout(() => {
-      void saveProjectSnapshot(project, "autosave").then(() => markSaved())
-    }, 900)
-    return () => window.clearTimeout(timeout)
-  }, [dirty, markSaved, project])
+    void saveProject({
+      project,
+      reason: "autosave",
+      delayMillis: 900,
+    }).then((saved) => {
+      if (Exit.isSuccess(saved)) {
+        markSaved(project)
+      }
+    })
+  }, [dirty, markSaved, project, saveProject])
 
   async function saveNow() {
     if (!project) {
       return
     }
-    setSaving(true)
-    try {
-      await saveProjectSnapshot(project, "manual")
-      markSaved()
-    } finally {
-      setSaving(false)
+    const saved = await saveProject({ project, reason: "manual" })
+    if (Exit.isSuccess(saved)) {
+      markSaved(project)
     }
   }
 
@@ -111,10 +139,9 @@ export function CircuitEditorPage({ projectId }: CircuitEditorPageProps) {
       showImageCopyStatus("error")
       return
     }
-    const activeSheet = project?.sheets.find((sheet) => sheet.id === activeSheetId)
-    const title = activeSheet
-      ? `${project?.name ?? "Circuit"} - ${activeSheet.name}`
-      : project?.name
+    const title = project
+      ? project.name
+      : undefined
     try {
       const blob = await renderSchematicSvgToPngBlob(svg, {
         backgroundColor: schematicBackgroundColor(svg),
@@ -142,7 +169,12 @@ export function CircuitEditorPage({ projectId }: CircuitEditorPageProps) {
     onSetTab: setActiveTab,
   })
 
-  if (latestProject === undefined && !project) {
+  const loadError =
+    latestProject._tag === "Failure"
+      ? Option.getOrUndefined(Cause.findErrorOption(latestProject.cause))
+      : undefined
+
+  if (latestProject._tag === "Initial" && project?.id !== projectId) {
     return (
       <main className="editor-loading">
         <p className="muted">Loading project...</p>
@@ -150,7 +182,10 @@ export function CircuitEditorPage({ projectId }: CircuitEditorPageProps) {
     )
   }
 
-  if (latestProject === null && !project) {
+  if (
+    latestProject._tag === "Success" &&
+    Option.isNone(latestProject.value)
+  ) {
     return (
       <main className="editor-loading">
         <h1>Project not found</h1>
@@ -161,23 +196,80 @@ export function CircuitEditorPage({ projectId }: CircuitEditorPageProps) {
     )
   }
 
+  if (loadError?._tag === "InvalidProjectDocument") {
+    return (
+      <main className="editor-loading">
+        <h1>Project document is invalid</h1>
+        <p className="muted">
+          This project was saved in an incompatible or malformed format.
+        </p>
+        <details>
+          <summary>Validation details</summary>
+          <pre>{loadError.details}</pre>
+        </details>
+        <Link className="primary-link" to="/projects">
+          Back to projects
+        </Link>
+      </main>
+    )
+  }
+
+  if (loadError?._tag === "InvalidProjectSummary") {
+    return (
+      <main className="editor-loading">
+        <h1>Project metadata is invalid</h1>
+        <p className="muted">
+          This project has a malformed local-storage index record.
+        </p>
+        <details>
+          <summary>Validation details</summary>
+          <pre>{loadError.details}</pre>
+        </details>
+        <Link className="primary-link" to="/projects">
+          Back to projects
+        </Link>
+      </main>
+    )
+  }
+
+  if (latestProject._tag === "Failure") {
+    return (
+      <main className="editor-loading">
+        <h1>Project could not be loaded</h1>
+        <p className="muted">Local storage is unavailable.</p>
+        <Link className="primary-link" to="/projects">
+          Back to projects
+        </Link>
+      </main>
+    )
+  }
+
   return (
-    <main className="editor-page" data-testid="editor-page">
+    <main
+      className="editor-page"
+      data-testid="editor-page"
+      data-save-state={saveResult.waiting ? "saving" : dirty ? "dirty" : "saved"}
+    >
       <EditorToolbar
         onSave={() => void saveNow()}
-        saveDisabled={!dirty || saving}
+        saveDisabled={!dirty || saveResult.waiting}
         onShowMeasurements={() => setActiveTab("measurements")}
         onShowSimulation={runDemoSimulation}
         onCopyCircuitImage={() => void copyCircuitImageToClipboard()}
         onShowShortcuts={() => setShowShortcuts(true)}
       />
+      {saveResult._tag === "Failure" &&
+      !AsyncResult.isInterrupted(saveResult) ? (
+        <p className="issue error persistence-alert" role="alert">
+          Project could not be saved. Local storage is unavailable.
+        </p>
+      ) : null}
       <section className="editor-main">
         <ComponentPalette />
         <SchematicCanvas />
         <PropertyInspector />
       </section>
       <BottomPanel
-        projectId={projectId}
         activeTab={activeTab}
         onActiveTabChange={setActiveTab}
         simulationRunToken={simulationRunToken}

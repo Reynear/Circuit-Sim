@@ -1,33 +1,27 @@
 import type { PointerEvent } from "react"
 import {
-  getNormalSymbolHandlePosts,
-  getTemporarySymbolHandlePositions,
+  getNormalComponentHandles,
+  getTemporaryComponentHandles,
   getWirePostIndexes,
-} from "../../../lib/schematic/post-endpoints"
+} from "@/browser/editor/post-endpoints"
 import {
   GRABBED_HANDLE_SIZE,
   POST_HANDLE_SIZE,
   ovalMarker,
   squareMarker,
-} from "../../../lib/schematic/post-markers"
-import {
-  getAnnotationLeadEnd,
-  hasAnnotationLead,
-  isLeadAnnotationObject,
-} from "../../../lib/schematic/annotations"
+} from "@/browser/editor/post-markers"
 import type {
   BoxObject,
   GroundObject,
-  JunctionObject,
   LineObject,
   NetLabelObject,
   ProbeObject,
   SchematicObject,
-  SymbolObject,
+  Component,
   TextObject,
-  Vec2,
+  Point,
   WireObject,
-} from "../../../lib/schematic/types"
+} from "@circuit-sim/core/circuit/project"
 
 export type GrabbedPostHandle = {
   objectId: string
@@ -38,7 +32,7 @@ type PostHandleLayerProps = {
   activeDragPostObjectId?: string | null
   grabbedPost?: GrabbedPostHandle | null
   hoverObjectId: string | null
-  objects: SchematicObject[]
+  objects: ReadonlyArray<SchematicObject>
   onPostPointerDown?: (
     objectId: string,
     postIndex: number,
@@ -49,8 +43,7 @@ type PostHandleLayerProps = {
 }
 
 type HandledObject =
-  | SymbolObject
-  | JunctionObject
+  | Component
   | GroundObject
   | NetLabelObject
   | ProbeObject
@@ -169,9 +162,9 @@ function drawnHandlePositions({
   activeDragPostObjectId: string | null
   grabbedPost: GrabbedPostHandle | null
   object: HandledObject
-  positions: Vec2[]
+  positions: Point[]
   showAllPosts: boolean
-}): Array<{ position: Vec2; index: number }> {
+}): Array<{ position: Point; index: number }> {
   const indexedPositions = positions.map((position, index) => ({
     position,
     index,
@@ -185,22 +178,18 @@ function drawnHandlePositions({
   if (grabbedPost?.objectId === object.id) {
     return indexedPositions.filter(({ index }) => index === grabbedPost.postIndex)
   }
-  if (object.kind === "symbol") {
-    return getNormalSymbolHandlePosts(object).map((post, index) => ({
+  if (object.kind === "component") {
+    return getNormalComponentHandles(object).map((post, index) => ({
       position: post.position,
       index,
     }))
-  }
-  if (isLeadAnnotationObject(object)) {
-    return indexedPositions.slice(0, 1)
   }
   return indexedPositions
 }
 
 function hasPostHandles(object: SchematicObject): object is HandledObject {
   return (
-    object.kind === "symbol" ||
-    object.kind === "junction" ||
+    object.kind === "component" ||
     object.kind === "ground" ||
     object.kind === "net-label" ||
     object.kind === "probe" ||
@@ -214,12 +203,12 @@ function hasPostHandles(object: SchematicObject): object is HandledObject {
 function postPositionsForObject(
   object: HandledObject,
   showAllPosts: boolean,
-): Vec2[] {
-  if (object.kind === "symbol") {
+): Point[] {
+  if (object.kind === "component") {
     if (showAllPosts) {
-      return getTemporarySymbolHandlePositions(object)
+      return getTemporaryComponentHandles(object)
     }
-    return getNormalSymbolHandlePosts(object).map((pin) => pin.position)
+    return getNormalComponentHandles(object).map((pin) => pin.position)
   }
   if (object.kind === "wire") {
     return getWirePostIndexes(object).flatMap((index) => {
@@ -236,13 +225,10 @@ function postPositionsForObject(
   if (object.kind === "text") {
     return showAllPosts ? [object.position, textDragEndpoint(object)] : []
   }
-  if (isLeadAnnotationObject(object) && showAllPosts && hasAnnotationLead(object)) {
-    return [object.position, getAnnotationLeadEnd(object)]
-  }
   return [object.position]
 }
 
-function textDragEndpoint(object: TextObject): Vec2 {
+function textDragEndpoint(object: TextObject): Point {
   return {
     x: object.position.x + 16,
     y: object.position.y,
@@ -251,12 +237,6 @@ function textDragEndpoint(object: TextObject): Vec2 {
 
 function hasDirectPostDragHandles(
   object: HandledObject,
-): object is LineObject | BoxObject | GroundObject | NetLabelObject | ProbeObject {
-  return (
-    object.kind === "line" ||
-    object.kind === "box" ||
-    object.kind === "ground" ||
-    object.kind === "net-label" ||
-    object.kind === "probe"
-  )
+): object is LineObject | BoxObject {
+  return object.kind === "line" || object.kind === "box"
 }

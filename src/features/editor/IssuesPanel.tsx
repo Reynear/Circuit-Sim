@@ -1,7 +1,7 @@
-import { useEditorStore } from "../../lib/schematic/editor-store"
+import { useEditorState } from "@/browser/editor/editor-state"
 
 export function IssuesPanel() {
-  const issues = useEditorStore((state) => state.ercIssues)
+  const issues = useEditorState((state) => state.ercIssues)
 
   return (
     <section className="panel-content">

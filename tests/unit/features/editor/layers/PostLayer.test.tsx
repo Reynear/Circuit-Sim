@@ -1,8 +1,8 @@
 import { act } from "react"
 import { createRoot } from "react-dom/client"
 import { describe, expect, it } from "vitest"
-import type { WireObject } from "../../../lib/schematic/types"
-import { PostLayer } from "./PostLayer"
+import type { WireObject } from "@circuit-sim/core/circuit/project"
+import { PostLayer } from "@/features/editor/layers/OverlayLayer"
 
 describe("PostLayer", () => {
   it("draws schematic post dots with fillOval geometry", () => {

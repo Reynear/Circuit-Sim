@@ -7,81 +7,75 @@ import {
   type PointerEvent,
   type WheelEvent,
 } from "react"
+import type { ComponentType } from "@circuit-sim/core/circuit/components"
 import {
   distance,
-  pointOnSegment,
   pointsEqual,
   snapToGrid,
-} from "../../lib/schematic/geometry"
+} from "@circuit-sim/core/circuit/geometry"
 import {
-  getAnnotationLeadEnd,
-  hasAnnotationLead,
-  isLeadAnnotationObject,
-} from "../../lib/schematic/annotations"
-import {
-  canDragCreateSymbol,
-  getSymbolPlacement,
-  type SymbolPlacement,
-} from "../../lib/schematic/placement"
-import {
+  GRID_SIZE,
   hasSelectDragDelayElapsed,
-  nearestConnectionSnapPoint,
-} from "../../lib/schematic/editor-interaction"
-import {
-  getPrimarySymbolPosts,
-  getWirePostIndexes,
-} from "../../lib/schematic/post-endpoints"
-import {
-  isLogicInputMomentary,
   isLogicInputTogglePoint,
-  nextLogicInputPosition,
-} from "../../lib/schematic/logic-inputs"
-import {
   isSwitchTogglePoint,
-  nextSwitchState,
-} from "../../lib/schematic/switch-state"
+  nearestConnectionSnapPoint,
+  nextLogicInputPosition,
+} from "@/browser/editor/interaction"
+import {
+  getPrimaryComponentPosts,
+  getWirePostIndexes,
+} from "@/browser/editor/post-endpoints"
 import {
   MOUSE_HIT_TOLERANCE,
   hitTestObjects,
-} from "../../lib/schematic/hit-testing"
-import { pinConnectionKey } from "../../lib/schematic/net-extraction"
-import { getSymbolPinWorldPositions } from "../../lib/schematic/transforms"
+} from "@/browser/editor/hit-testing"
+import { netHighlightObjectIds as highlightObjectIdsForNet } from "@circuit-sim/core/circuit/net-extraction"
+import { getPinPosts } from "@circuit-sim/core/circuit/component-geometry"
 import {
   captureAxisDragTargets,
-  useEditorStore,
+  useEditorState,
   type EditorTool,
   type AxisDragTarget,
-} from "../../lib/schematic/editor-store"
+} from "@/browser/editor/editor-state"
 import {
   getMouseWheelValueEdit,
   type MouseWheelValueEdit,
-} from "../../lib/schematic/values"
+} from "@/browser/editor/values"
 import {
   mergedObjectBounds,
-  objectsMatchingSelectionRect,
   rectFromPoints,
   type SelectionRect,
-} from "../../lib/schematic/selection-rect"
+} from "@/browser/editor/selection-rect"
 import {
   getRoutedWireSnapPoint,
   isRoutedWire,
-  routeRoutedWire,
   routedWirePoints,
+  splitWireAtPoint,
   type WireRouteStyle,
-} from "../../lib/schematic/wire-routing"
-import type {
-  BoxObject,
+} from "@/browser/editor/wire-routing"
+import {
+  type BoxObject,
   GroundObject,
   LineObject,
   NetLabelObject,
   ProbeObject,
   SchematicObject,
-  SymbolObject,
-  Vec2,
+  Component,
+  Point,
   WireObject,
-} from "../../lib/schematic/types"
-import { CursorGuideLayer } from "./layers/CursorGuideLayer"
-import { BadConnectionLayer } from "./layers/BadConnectionLayer"
+} from "@circuit-sim/core/circuit/project"
+import {
+  isGraphicObject,
+  objectMoveAnchor,
+} from "@/browser/editor/object-geometry"
+import {
+  BadConnectionLayer,
+  CursorGuideLayer,
+  GridLayer,
+  PostLayer,
+  RoutedWireSnapLayer,
+  SelectionLayer,
+} from "./layers/OverlayLayer"
 import {
   CreationPreviewLayer,
   CreationPreviewHandle,
@@ -92,98 +86,44 @@ import {
   PostHandleLayer,
   type GrabbedPostHandle,
 } from "./layers/PostHandleLayer"
-import { GridLayer } from "./layers/GridLayer"
 import { PinLayer } from "./layers/PinLayer"
-import { PostLayer } from "./layers/PostLayer"
-import { RoutedWireSnapLayer } from "./layers/RoutedWireSnapLayer"
-import { SelectionLayer } from "./layers/SelectionLayer"
 import { WireEditLayer } from "./layers/WireEditLayer"
 import { WireLayer } from "./layers/WireLayer"
+import { formatMeasurement } from "@/browser/simulation/display"
+import type { RunObservationReport } from "@circuit-sim/core/simulation/run-observations"
 import {
-  formatMeasurement,
-  type CircuitMeasurementReport,
-} from "../../lib/simulation/measurements"
+  beginMarquee,
+  beginShapeCreation,
+  isAnnotationPlacementToolType,
+  marqueeSelectionIds,
+  modifierAdditive,
+  shapeCreationHasSize,
+  updateCreationDrag,
+  updateMarquee,
+  type AnnotationPlacementTool,
+  type DragState,
+  type MoveDragState,
+  type ShapePostEndpoint,
+} from "@/browser/editor/canvas-gestures"
 
-type MoveDragState = {
-  type: "move"
-  objectIds: string[]
-  start: Vec2
-  initialPositions: Record<string, Vec2>
-  snapToGrid: boolean
-}
+export type {
+  AnnotationPlacementTool,
+  DragState,
+} from "@/browser/editor/canvas-gestures"
 
-type RoutedWireRerouteDragState = { type: "routed-wire-reroute"; wireId: string }
-
-type DragState =
-  | MoveDragState
-  | { type: "wire-point"; wireId: string; pointIndex: number }
-  | RoutedWireRerouteDragState
-  | {
-      type: "pending-select-drag"
-      pointerDownTime: number
-      pendingDrag: MoveDragState | RoutedWireRerouteDragState
-    }
-  | { type: "shape-post"; objectId: string; endpoint: ShapePostEndpoint }
-  | {
-      type: "annotation-post"
-      objectId: string
-      endpoint: AnnotationPostEndpoint
-    }
-  | { type: "post-group"; position: Vec2 }
-  | { type: "held-logic-input"; symbolId: string; releasePosition: string }
-  | { type: "pan"; startClient: Vec2; startPan: Vec2 }
-  | { type: "marquee"; start: Vec2; current: Vec2; additive: boolean }
-  | {
-      type: "axis"
-      axis: "x" | "y"
-      line: number
-      targets: AxisDragTarget[]
-    }
-  | { type: "symbol-pin"; symbolId: string; componentPinId: string }
-  | {
-      type: "create-symbol"
-      componentDefinitionId: string
-      props?: Record<string, unknown> | undefined
-      start: Vec2
-      current: Vec2
-    }
-  | {
-      type: "create-wire"
-      start: Vec2
-      current: Vec2
-      routeStyle: WireRouteStyle
-    }
-  | {
-      type: "create-box"
-      start: Vec2
-      current: Vec2
-    }
-  | {
-      type: "create-line"
-      start: Vec2
-      current: Vec2
-    }
-  | {
-      type: "create-annotation"
-      toolType: AnnotationPlacementTool
-      start: Vec2
-      current: Vec2
-    }
-
-type ShapePostEndpoint = "start" | "end"
 type ShapePostObject = LineObject | BoxObject
-type AnnotationPostEndpoint = "position" | "leadEnd"
-type AnnotationPlacementTool =
-  | "place-ground"
-  | "place-voltage-probe"
-  | "place-current-probe"
-  | "place-net-label"
-  | "place-text"
 
 type WheelValuePopupState = MouseWheelValueEdit & {
   x: number
   y: number
-  symbolId: string
+  componentId: string
+}
+
+type DragStartPlan = {
+  readonly drag: DragState
+  readonly checkpoint?: true
+  readonly select?: string | null
+  readonly wireRouteStyle?: WireRouteStyle
 }
 
 const defaultVoltageColors = {
@@ -198,7 +138,7 @@ const editingDisabled = false
 
 function grabbedPostHandleFromDrag(
   drag: DragState | null,
-  objects: SchematicObject[],
+  objects: ReadonlyArray<SchematicObject>,
 ): GrabbedPostHandle | null {
   if (!drag) {
     return null
@@ -208,27 +148,6 @@ function grabbedPostHandleFromDrag(
       objectId: drag.objectId,
       postIndex: drag.endpoint === "start" ? 0 : 1,
     }
-  }
-  if (drag.type === "annotation-post") {
-    return {
-      objectId: drag.objectId,
-      postIndex: drag.endpoint === "position" ? 0 : 1,
-    }
-  }
-  if (drag.type === "symbol-pin") {
-    const symbol = objects.find(
-      (object): object is SymbolObject =>
-        object.kind === "symbol" && object.id === drag.symbolId,
-    )
-    if (!symbol) {
-      return null
-    }
-    const postIndex = getPrimarySymbolPosts(symbol).findIndex(
-      (post) => post.componentPinId === drag.componentPinId,
-    )
-    return postIndex >= 0
-      ? { objectId: drag.symbolId, postIndex }
-      : null
   }
   if (drag.type === "wire-point") {
     const wire = objects.find(
@@ -246,72 +165,66 @@ function grabbedPostHandleFromDrag(
 
 export function SchematicCanvas() {
   const svgRef = useRef<SVGSVGElement | null>(null)
-  const project = useEditorStore((state) => state.project)
-  const activeSheetId = useEditorStore((state) => state.activeSheetId)
-  const selectedObjectIds = useEditorStore((state) => state.selectedObjectIds)
-  const tool = useEditorStore((state) => state.tool)
-  const measurements = useEditorStore((state) => state.measurements)
-  const ercIssues = useEditorStore((state) => state.ercIssues)
-  const setTool = useEditorStore((state) => state.setTool)
-  const selectObject = useEditorStore((state) => state.selectObject)
-  const selectObjects = useEditorStore((state) => state.selectObjects)
-  const checkpointHistory = useEditorStore((state) => state.checkpointHistory)
-  const placeSymbol = useEditorStore((state) => state.placeSymbol)
-  const placeGround = useEditorStore((state) => state.placeGround)
-  const placeVoltageProbe = useEditorStore((state) => state.placeVoltageProbe)
-  const placeCurrentProbe = useEditorStore((state) => state.placeCurrentProbe)
-  const placeNetLabel = useEditorStore((state) => state.placeNetLabel)
-  const placeText = useEditorStore((state) => state.placeText)
-  const placeBox = useEditorStore((state) => state.placeBox)
-  const placeLine = useEditorStore((state) => state.placeLine)
-  const moveObjects = useEditorStore((state) => state.moveObjects)
-  const moveAxisDragTargets = useEditorStore((state) => state.moveAxisDragTargets)
-  const moveObjectsAtPost = useEditorStore((state) => state.moveObjectsAtPost)
-  const moveSymbolPin = useEditorStore((state) => state.moveSymbolPin)
-  const updateShapePost = useEditorStore((state) => state.updateShapePost)
-  const updateAnnotationLeadPost = useEditorStore(
-    (state) => state.updateAnnotationLeadPost,
-  )
-  const addWire = useEditorStore((state) => state.addWire)
-  const updateWirePoint = useEditorStore((state) => state.updateWirePoint)
-  const rerouteWireVia = useEditorStore((state) => state.rerouteWireVia)
-  const insertWirePoint = useEditorStore((state) => state.insertWirePoint)
-  const toggleSwitchState = useEditorStore(
+  const project = useEditorState((state) => state.project)
+  const selectedObjectIds = useEditorState((state) => state.selectedObjectIds)
+  const tool = useEditorState((state) => state.tool)
+  const measurements = useEditorState((state) => state.observations)
+  const ercIssues = useEditorState((state) => state.ercIssues)
+  const setTool = useEditorState((state) => state.setTool)
+  const selectObject = useEditorState((state) => state.selectObject)
+  const selectObjects = useEditorState((state) => state.selectObjects)
+  const checkpointHistory = useEditorState((state) => state.checkpointHistory)
+  const placeComponent = useEditorState((state) => state.placeComponent)
+  const placeGround = useEditorState((state) => state.placeGround)
+  const placeVoltageProbe = useEditorState((state) => state.placeVoltageProbe)
+  const placeCurrentProbe = useEditorState((state) => state.placeCurrentProbe)
+  const placeNetLabel = useEditorState((state) => state.placeNetLabel)
+  const placeText = useEditorState((state) => state.placeText)
+  const placeBox = useEditorState((state) => state.placeBox)
+  const placeLine = useEditorState((state) => state.placeLine)
+  const moveObjects = useEditorState((state) => state.moveObjects)
+  const moveAxisDragTargets = useEditorState((state) => state.moveAxisDragTargets)
+  const moveObjectsAtPost = useEditorState((state) => state.moveObjectsAtPost)
+  const updateShapePost = useEditorState((state) => state.updateShapePost)
+  const addWire = useEditorState((state) => state.addWire)
+  const updateWirePoint = useEditorState((state) => state.updateWirePoint)
+  const rerouteWireVia = useEditorState((state) => state.rerouteWireVia)
+  const insertWirePoint = useEditorState((state) => state.insertWirePoint)
+  const toggleSwitchState = useEditorState(
     (state) => state.toggleSwitchState,
   )
-  const setLogicInputPosition = useEditorStore(
+  const setLogicInputPosition = useEditorState(
     (state) => state.setLogicInputPosition,
   )
-  const toggleLogicInputPosition = useEditorStore(
+  const toggleLogicInputPosition = useEditorState(
     (state) => state.toggleLogicInputPosition,
   )
-  const updateSymbolProps = useEditorStore((state) => state.updateSymbolProps)
+  const updateComponentProperty = useEditorState(
+    (state) => state.updateComponentProperty,
+  )
   const [size, setSize] = useState({ width: 900, height: 600 })
-  const [pan, setPan] = useState<Vec2>({ x: 120, y: 80 })
+  const [pan, setPan] = useState<Point>({ x: 120, y: 80 })
   const [scale, setScale] = useState(1)
   const dragRef = useRef<DragState | null>(null)
   const wheelValuePopupTimeoutRef = useRef<number | null>(null)
   const [drag, setDrag] = useState<DragState | null>(null)
-  const [wireStart, setWireStart] = useState<Vec2 | null>(null)
+  const [wireStart, setWireStart] = useState<Point | null>(null)
   const [wireRouteStyle, setWireRouteStyle] = useState<WireRouteStyle>("horizontal-first")
-  const [hoverPoint, setHoverPoint] = useState<Vec2 | null>(null)
-  const [cursorPoint, setCursorPoint] = useState<Vec2 | null>(null)
+  const [hoverPoint, setHoverPoint] = useState<Point | null>(null)
+  const [cursorPoint, setCursorPoint] = useState<Point | null>(null)
   const [cursorInsideCanvas, setCursorInsideCanvas] = useState(false)
   const [hoverObjectId, setHoverObjectId] = useState<string | null>(null)
   const [netHighlightKeyHeld, setNetHighlightKeyHeld] = useState(false)
   const [wheelValuePopup, setWheelValuePopup] =
     useState<WheelValuePopupState | null>(null)
 
-  const sheet = project?.sheets.find((candidate) => candidate.id === activeSheetId)
-  const sheetGridSize = sheet?.gridSize ?? 20
-  const gridSize = sheetGridSize
-  const objects = useMemo(() => sheet?.objects ?? [], [sheet])
+  const objects = useMemo(() => project?.objects ?? [], [project])
   const selectedObjects = useMemo(
     () => objects.filter((object) => selectedObjectIds.includes(object.id)),
     [objects, selectedObjectIds],
   )
-  const symbols = objects.filter(
-    (object): object is SymbolObject => object.kind === "symbol",
+  const components = objects.filter(
+    (object): object is Component => object.kind === "component",
   )
   const wires = objects.filter(
     (object): object is WireObject => object.kind === "wire",
@@ -336,7 +249,7 @@ export function SchematicCanvas() {
           (_, index) => index === 0 || index === activeWirePoints.length - 1,
         )
       : []
-  const activeSymbolPreview = symbolPreviewFromDrag(drag, gridSize)
+  const activeComponentPreview = componentPreviewFromDrag(drag)
   const activeBoxPreview =
     drag?.type === "create-box" && !pointsEqual(drag.start, drag.current)
       ? drag
@@ -353,9 +266,7 @@ export function SchematicCanvas() {
     axisDragMode ||
     tool.type === "drag-selected" ||
     tool.type === "drag-post" ||
-    drag?.type === "symbol-pin" ||
     drag?.type === "shape-post" ||
-    drag?.type === "annotation-post" ||
     drag?.type === "post-group" ||
     drag?.type === "wire-point" ||
     drag?.type === "move"
@@ -372,12 +283,9 @@ export function SchematicCanvas() {
     tool.type === "draw-wire" || tool.type === "drag-post" || isPlacementTool(tool)
   const netHighlightObjectIds = useMemo(
     () =>
-      netHighlightIdsForHover({
-        hoverObjectId,
-        keyHeld: netHighlightKeyHeld,
-        measurements,
-        objects,
-      }),
+      netHighlightKeyHeld && hoverObjectId && measurements
+        ? highlightObjectIdsForNet(objects, measurements.netlist, hoverObjectId)
+        : [],
     [hoverObjectId, measurements, netHighlightKeyHeld, objects],
   )
   const routedWireSnapPoint = useMemo(() => {
@@ -389,8 +297,8 @@ export function SchematicCanvas() {
     if (!wire || !isRoutedWireWithBends(wire)) {
       return null
     }
-    return getRoutedWireSnapPoint(wire, cursorPoint, gridSize)
-  }, [cursorPoint, drag, editingDisabled, gridSize, hoverObjectId, tool.type, wires])
+    return getRoutedWireSnapPoint(wire, cursorPoint)
+  }, [cursorPoint, drag, editingDisabled, hoverObjectId, tool.type, wires])
 
   useEffect(() => {
     const svg = svgRef.current
@@ -466,11 +374,29 @@ export function SchematicCanvas() {
     setDrag(nextDrag)
   }
 
-  function eventWorldPoint(event: PointerEvent<SVGElement>): Vec2 {
+  function beginDrag(
+    plan: DragStartPlan,
+    event: PointerEvent<SVGElement>,
+  ): void {
+    if (plan.select !== undefined) {
+      selectObject(plan.select)
+    }
+    if (plan.checkpoint) {
+      checkpointHistory()
+    }
+    if (plan.wireRouteStyle) {
+      setWireRouteStyle(plan.wireRouteStyle)
+    }
+    setActiveDrag(plan.drag)
+    const captureTarget = event.currentTarget.ownerSVGElement ?? event.currentTarget
+    captureTarget.setPointerCapture(event.pointerId)
+  }
+
+  function eventWorldPoint(event: PointerEvent<SVGElement>): Point {
     return clientWorldPoint(event.clientX, event.clientY)
   }
 
-  function clientWorldPoint(clientX: number, clientY: number): Vec2 {
+  function clientWorldPoint(clientX: number, clientY: number): Point {
     const rect = svgRef.current?.getBoundingClientRect()
     if (!rect) {
       return { x: 0, y: 0 }
@@ -494,17 +420,14 @@ export function SchematicCanvas() {
     )
   }
 
-  function snappedEventPoint(event: PointerEvent<SVGElement>): Vec2 {
+  function snappedEventPoint(event: PointerEvent<SVGElement>): Point {
     const raw = eventWorldPoint(event)
     const nearest = nearestConnectionSnapPoint(
       raw,
       objects,
-      {
-        gridSize,
-        tolerance: Math.max(10, gridSize * 0.65),
-      },
+      Math.max(10, GRID_SIZE * 0.65),
     )
-    return nearest ?? snapToGrid(raw, gridSize)
+    return nearest ?? snapToGrid(raw, GRID_SIZE)
   }
 
   function handleCanvasPointerDown(event: PointerEvent<SVGSVGElement>) {
@@ -516,24 +439,24 @@ export function SchematicCanvas() {
     const modifierMode = modifierDragMode(event)
     if (editingDisabled) {
       if (event.button === 1 || modifierMode === "drag-all") {
-        startPanDrag(event)
-        return
-      }
-      if (event.button === 0) {
+        beginDrag(panDragPlan(event), event)
+      } else if (event.button === 0) {
         selectObject(null)
       }
       return
     }
     if (isTemporarySelectModifier(event)) {
-      startMarqueeSelection(rawPosition, event)
+      beginDrag(marqueeDragPlan(rawPosition, event), event)
       return
     }
     if (tool.type !== "draw-wire" && modifierMode === "drag-row") {
-      startAxisDragAt("y", position.y, event)
+      const plan = axisDragPlan("y", position.y)
+      if (plan) beginDrag(plan, event)
       return
     }
     if (tool.type !== "draw-wire" && modifierMode === "drag-column") {
-      startAxisDragAt("x", position.x, event)
+      const plan = axisDragPlan("x", position.x)
+      if (plan) beginDrag(plan, event)
       return
     }
     if (
@@ -541,57 +464,43 @@ export function SchematicCanvas() {
       tool.type === "drag-all" ||
       (tool.type !== "draw-wire" && modifierMode === "drag-all")
     ) {
-      startPanDrag(event)
+      beginDrag(panDragPlan(event), event)
       return
     }
 
     if (tool.type === "drag-row" || tool.type === "drag-column") {
       const axis = tool.type === "drag-column" ? "x" : "y"
-      startAxisDragAt(axis, position[axis], event)
+      const plan = axisDragPlan(axis, position[axis])
+      if (plan) beginDrag(plan, event)
       return
     }
 
     if (tool.type === "drag-selected") {
-      startMoveForObjectIds(selectedObjectIds, event)
+      const plan = moveDragPlanForObjectIds(selectedObjectIds, event)
+      if (plan) beginDrag(plan, event)
       return
     }
 
-    if (isPlacementTool(tool) && isTemporarySelectModifier(event)) {
-      startMarqueeSelection(rawPosition, event)
-      return
-    }
-
-    if (startPlacementToolAtPointer(event, position)) {
+    const placement = placementDragPlan(position)
+    if (placement) {
+      beginDrag(placement, event)
       return
     }
     if (tool.type === "draw-wire") {
-      const routeStyle = wireRouteStyleFromTool(tool, event)
-      setWireRouteStyle(routeStyle)
       if (event.detail >= 2) {
         setWireStart(null)
         setHoverPoint(null)
         return
       }
-      setActiveDrag({
-        type: "create-wire",
-        start: position,
-        current: position,
-        routeStyle,
-      })
-      event.currentTarget.setPointerCapture(event.pointerId)
+      const plan = wireCreationDragPlan(position, event)
+      if (plan) beginDrag(plan, event)
       return
     }
     if (tool.type === "drag-post") {
       return
     }
 
-    setActiveDrag({
-      type: "marquee",
-      start: rawPosition,
-      current: rawPosition,
-      additive: event.shiftKey || event.metaKey || event.ctrlKey,
-    })
-    event.currentTarget.setPointerCapture(event.pointerId)
+    beginDrag(marqueeDragPlan(rawPosition, event), event)
   }
 
   function handlePointerMove(event: PointerEvent<SVGSVGElement>) {
@@ -638,12 +547,6 @@ export function SchematicCanvas() {
       rerouteWireVia(activeDrag.wireId, position)
     } else if (activeDrag.type === "shape-post") {
       updateShapePost(activeDrag.objectId, activeDrag.endpoint, position)
-    } else if (activeDrag.type === "annotation-post") {
-      updateAnnotationLeadPost(
-        activeDrag.objectId,
-        activeDrag.endpoint,
-        position,
-      )
     } else if (activeDrag.type === "post-group") {
       const delta = {
         x: position.x - activeDrag.position.x,
@@ -653,8 +556,6 @@ export function SchematicCanvas() {
       setActiveDrag({ ...activeDrag, position })
     } else if (activeDrag.type === "held-logic-input") {
       return
-    } else if (activeDrag.type === "symbol-pin") {
-      moveSymbolPin(activeDrag.symbolId, activeDrag.componentPinId, position)
     } else if (activeDrag.type === "axis") {
       const nextLine = position[activeDrag.axis]
       moveAxisDragTargets(
@@ -664,29 +565,26 @@ export function SchematicCanvas() {
       )
       setActiveDrag({ ...activeDrag, line: nextLine })
     } else if (activeDrag.type === "marquee") {
-      const nextDrag = { ...activeDrag, current: rawPosition }
+      const nextDrag = updateMarquee(activeDrag, rawPosition)
       setActiveDrag(nextDrag)
-      selectObjects(selectionIdsForRect(rectFromPoints(nextDrag.start, nextDrag.current)), {
+      selectObjects(marqueeSelectionIds(nextDrag, objects), {
         additive: nextDrag.additive,
       })
-    } else if (activeDrag.type === "create-symbol") {
-      setActiveDrag({ ...activeDrag, current: position })
-    } else if (activeDrag.type === "create-annotation") {
-      setActiveDrag({
-        ...activeDrag,
-        current:
-          activeDrag.toolType === "place-text" ? rawPosition : position,
-      })
-    } else if (activeDrag.type === "create-box") {
-      setActiveDrag({ ...activeDrag, current: rawPosition })
-    } else if (activeDrag.type === "create-wire") {
-      setActiveDrag({
-        ...activeDrag,
-        current: position,
-        routeStyle: wireRouteStyleFromTool(tool, event),
-      })
-    } else if (activeDrag.type === "create-line") {
-      setActiveDrag({ ...activeDrag, current: rawPosition })
+    } else if (
+      activeDrag.type === "create-component" ||
+      activeDrag.type === "create-annotation" ||
+      activeDrag.type === "create-box" ||
+      activeDrag.type === "create-wire" ||
+      activeDrag.type === "create-line"
+    ) {
+      setActiveDrag(
+        updateCreationDrag(
+          activeDrag,
+          position,
+          rawPosition,
+          wireRouteStyleFromTool(tool, event),
+        ),
+      )
     } else {
       setPan({
         x: activeDrag.startPan.x + event.clientX - activeDrag.startClient.x,
@@ -699,35 +597,21 @@ export function SchematicCanvas() {
     const activeDrag = dragRef.current
     if (activeDrag) {
       if (activeDrag.type === "marquee") {
-        const rect = rectFromPoints(activeDrag.start, activeDrag.current)
-        selectObjects(selectionIdsForRect(rect), { additive: activeDrag.additive })
-      } else if (activeDrag.type === "create-symbol") {
-        const placement = getSymbolPlacement(
-          activeDrag.componentDefinitionId,
-          activeDrag.start,
-          activeDrag.current,
-          gridSize,
-        )
-        if (placement) {
-          placeSymbol(activeDrag.componentDefinitionId, placement.position, {
-            rotation: placement.rotation,
-            ...(placement.pinSpacing
-              ? { pinSpacing: placement.pinSpacing }
-              : {}),
-            ...(placement.pinSpread
-              ? { pinSpread: placement.pinSpread }
-              : {}),
-            props: activeDrag.props,
-          })
-        }
+        selectObjects(marqueeSelectionIds(activeDrag, objects), {
+          additive: activeDrag.additive,
+        })
+      } else if (
+        activeDrag.type === "create-component" &&
+        !pointsEqual(activeDrag.start, activeDrag.current)
+      ) {
+        placeComponent(activeDrag.component, activeDrag.start, activeDrag.current)
       } else if (activeDrag.type === "create-annotation") {
         commitAnnotationPlacement(
           activeDrag.toolType,
           annotationPlacementPosition(activeDrag),
-          annotationPlacementLeadEnd(activeDrag),
         )
       } else if (activeDrag.type === "create-box") {
-        if (!pointsEqual(activeDrag.start, activeDrag.current)) {
+        if (shapeCreationHasSize(activeDrag)) {
           placeBox(activeDrag.start, activeDrag.current)
         }
       } else if (activeDrag.type === "create-wire") {
@@ -745,12 +629,12 @@ export function SchematicCanvas() {
           setHoverPoint(activeDrag.current)
         }
       } else if (activeDrag.type === "create-line") {
-        if (!pointsEqual(activeDrag.start, activeDrag.current)) {
+        if (shapeCreationHasSize(activeDrag)) {
           placeLine(activeDrag.start, activeDrag.current)
         }
       } else if (activeDrag.type === "held-logic-input") {
         setLogicInputPosition(
-          activeDrag.symbolId,
+          activeDrag.componentId,
           activeDrag.releasePosition,
           { history: false },
         )
@@ -801,10 +685,11 @@ export function SchematicCanvas() {
     if (editValuesWithMouseWheel && !editingDisabled) {
       const valueEdit = getWheelValueEditTarget(world, event.deltaY)
       if (valueEdit) {
-        updateSymbolProps(valueEdit.symbol.id, {
-          [valueEdit.edit.field]: valueEdit.edit.value,
-        })
-        showWheelValuePopup(valueEdit.symbol.id, valueEdit.edit, client)
+        updateComponentProperty(
+          valueEdit.component.id,
+          valueEdit.edit.propertyEdit,
+        )
+        showWheelValuePopup(valueEdit.component.id, valueEdit.edit, client)
         return
       }
     }
@@ -813,34 +698,34 @@ export function SchematicCanvas() {
   }
 
   function getWheelValueEditTarget(
-    world: Vec2,
+    world: Point,
     deltaY: number,
-  ): { symbol: SymbolObject; edit: MouseWheelValueEdit } | null {
+  ): { component: Component; edit: MouseWheelValueEdit } | null {
     const hit = hitTestObjects(world, objects, 10 / scale)
     if (!hit || (hit.type !== "object" && hit.type !== "pin")) {
       return null
     }
-    const symbol = objects.find(
-      (object): object is SymbolObject =>
-        object.kind === "symbol" && object.id === hit.objectId,
+    const component = objects.find(
+      (object): object is Component =>
+        object.kind === "component" && object.id === hit.objectId,
     )
-    if (!symbol) {
+    if (!component) {
       return null
     }
-    const edit = getMouseWheelValueEdit(symbol, deltaY)
-    return edit ? { symbol, edit } : null
+    const edit = getMouseWheelValueEdit(component, deltaY)
+    return edit ? { component, edit } : null
   }
 
   function showWheelValuePopup(
-    symbolId: string,
+    componentId: string,
     edit: MouseWheelValueEdit,
-    client: Vec2,
+    client: Point,
   ) {
     const popupWidth = 132
     const popupHeight = 140
     setWheelValuePopup({
       ...edit,
-      symbolId,
+      componentId,
       x: Math.min(Math.max(8, client.x + 14), Math.max(8, size.width - popupWidth)),
       y: Math.min(Math.max(8, client.y + 14), Math.max(8, size.height - popupHeight)),
     })
@@ -853,7 +738,7 @@ export function SchematicCanvas() {
     }, 1400)
   }
 
-  function zoomAtClient(client: Vec2, world: Vec2, nextScale: number) {
+  function zoomAtClient(client: Point, world: Point, nextScale: number) {
     setScale(nextScale)
     setPan({
       x: client.x - world.x * nextScale,
@@ -917,7 +802,7 @@ export function SchematicCanvas() {
       return
     }
     if (event.button === 1) {
-      startPanDrag(event)
+      beginDrag(panDragPlan(event), event)
       return
     }
     if (editingDisabled) {
@@ -926,10 +811,11 @@ export function SchematicCanvas() {
     }
     const modifierMode = modifierDragMode(event)
     if (isTemporarySelectModifier(event)) {
-      if (
-        canDirectSelectPostDrag(objectId) &&
-        startDirectSelectPostDragForObject(objectId, event)
-      ) {
+      const plan = canDirectSelectPostDrag(objectId)
+        ? directSelectPostDragPlan(objectId, event)
+        : null
+      if (plan) {
+        beginDrag(plan, event)
         return
       }
       selectObject(objectId, { toggle: true })
@@ -939,10 +825,12 @@ export function SchematicCanvas() {
       if (event.detail >= 2) {
         setWireStart(null)
         setTool({ type: "select" })
-        startMoveForObject(objectId, event)
+        const plan = moveDragPlanForObject(objectId, event)
+        if (plan) beginDrag(plan, event)
         return
       }
-      startWireCreation(snappedEventPoint(event), event)
+      const plan = wireCreationDragPlan(snappedEventPoint(event), event)
+      if (plan) beginDrag(plan, event)
       return
     }
     if (
@@ -951,58 +839,53 @@ export function SchematicCanvas() {
       modifierMode === "drag-row" ||
       modifierMode === "drag-column"
     ) {
-      startAxisDrag(
+      const axis =
         tool.type === "drag-column" || modifierMode === "drag-column"
           ? "x"
-          : "y",
-        event,
-      )
+          : "y"
+      const position = snappedEventPoint(event)
+      const plan = axisDragPlan(axis, position[axis])
+      if (plan) beginDrag(plan, event)
       return
     }
     if (tool.type === "drag-all" || modifierMode === "drag-all") {
-      startPanDrag(event)
+      beginDrag(panDragPlan(event), event)
       return
     }
     if (tool.type === "drag-post" || modifierMode === "drag-post") {
-      if (startSymbolPinDragForObject(objectId, event)) {
-        return
-      }
-      if (startShapePostDragForObject(objectId, event)) {
-        return
-      }
-      if (startAnnotationPostDragForObject(objectId, event, true)) {
+      const plan = shapePostDragPlanForObject(objectId, event)
+      if (plan) {
+        beginDrag(plan, event)
         return
       }
       if (tool.type === "drag-post") {
-        startMoveForObject(objectId, event)
+        const movePlan = moveDragPlanForObject(objectId, event)
+        if (movePlan) beginDrag(movePlan, event)
         return
       }
     }
     if (tool.type === "drag-selected") {
-      startMoveForObjectIds([...selectedObjectIds, objectId], event)
-      return
-    }
-    if (isPlacementTool(tool) && isTemporarySelectModifier(event)) {
-      selectObject(objectId, { toggle: true })
-      return
-    }
-    if (
-      isPlacementTool(tool) &&
-      startPlacementToolAtPointer(
+      const plan = moveDragPlanForObjectIds(
+        [...selectedObjectIds, objectId],
         event,
-        snappedEventPoint(event),
       )
-    ) {
+      if (plan) beginDrag(plan, event)
+      return
+    }
+    if (isPlacementTool(tool)) {
+      const plan = placementDragPlan(snappedEventPoint(event))
+      if (plan) beginDrag(plan, event)
       return
     }
     if (tool.type !== "select") {
       selectObject(objectId)
       return
     }
-    if (
-      canDirectSelectPostDrag(objectId) &&
-      startDirectSelectPostDragForObject(objectId, event)
-    ) {
+    const directPostPlan = canDirectSelectPostDrag(objectId)
+      ? directSelectPostDragPlan(objectId, event)
+      : null
+    if (directPostPlan) {
+      beginDrag(directPostPlan, event)
       return
     }
     if (event.shiftKey || event.metaKey || event.ctrlKey) {
@@ -1010,104 +893,73 @@ export function SchematicCanvas() {
       return
     }
 
-    if (!startPendingMoveForObject(objectId, event)) {
+    const pendingMove = moveDragPlanForObject(objectId, event, true)
+    if (pendingMove) {
+      beginDrag(pendingMove, event)
+    } else {
       selectObject(objectId)
     }
   }
 
-  function startMoveForObject(
+  function moveDragPlanForObject(
     objectId: string,
     event: PointerEvent<SVGElement>,
-  ): boolean {
-    const object = objects.find((candidate) => candidate.id === objectId)
-    if (!object || !objectMoveAnchor(object)) {
-      selectObject(objectId)
-      return false
+    pending = false,
+  ): DragStartPlan | null {
+    if (!objects.some((object) => object.id === objectId)) {
+      return null
     }
-
-    const shouldMoveSelection = selectedObjectIds.includes(objectId)
-    const movingIds = shouldMoveSelection ? selectedObjectIds : [objectId]
-    if (!shouldMoveSelection) {
-      selectObject(objectId)
-    }
-    return startMoveForObjectIds(movingIds, event)
+    const movesSelection = selectedObjectIds.includes(objectId)
+    const plan = moveDragPlanForObjectIds(
+      movesSelection ? selectedObjectIds : [objectId],
+      event,
+      pending,
+    )
+    return plan && !movesSelection ? { ...plan, select: objectId } : plan
   }
 
-  function startPendingMoveForObject(
-    objectId: string,
-    event: PointerEvent<SVGElement>,
-  ): boolean {
-    const object = objects.find((candidate) => candidate.id === objectId)
-    if (!object || !objectMoveAnchor(object)) {
-      selectObject(objectId)
-      return false
-    }
-
-    const shouldMoveSelection = selectedObjectIds.includes(objectId)
-    const movingIds = shouldMoveSelection ? selectedObjectIds : [objectId]
-    if (!shouldMoveSelection) {
-      selectObject(objectId)
-    }
-    return startPendingMoveForObjectIds(movingIds, event)
-  }
-
-  function startMoveForObjectIds(
+  function moveDragPlanForObjectIds(
     objectIds: string[],
     event: PointerEvent<SVGElement>,
-    start?: Vec2,
-  ): boolean {
-    const moveDrag = createMoveDragState(objectIds, event, start)
+    pending = false,
+  ): DragStartPlan | null {
+    const moveDrag = createMoveDragState(objectIds, event)
     if (!moveDrag) {
-      return false
+      return null
     }
-    checkpointHistory()
-    setActiveDrag(moveDrag)
-    capturePointer(event.currentTarget, event.pointerId)
-    return true
-  }
-
-  function startPendingMoveForObjectIds(
-    objectIds: string[],
-    event: PointerEvent<SVGElement>,
-    start?: Vec2,
-  ): boolean {
-    const moveDrag = createMoveDragState(objectIds, event, start)
-    if (!moveDrag) {
-      return false
-    }
-    setActiveDrag({
-      type: "pending-select-drag",
-      pointerDownTime: window.performance.now(),
-      pendingDrag: moveDrag,
-    })
-    capturePointer(event.currentTarget, event.pointerId)
-    return true
+    return pending
+      ? {
+          drag: {
+            type: "pending-select-drag",
+            pointerDownTime: window.performance.now(),
+            pendingDrag: moveDrag,
+          },
+        }
+      : { drag: moveDrag, checkpoint: true }
   }
 
   function createMoveDragState(
     objectIds: string[],
     event: PointerEvent<SVGElement>,
-    start?: Vec2,
   ): MoveDragState | null {
     if (editingDisabled) {
       return null
     }
     const movingIds = [...new Set(objectIds)]
-    const movingObjects = objects.filter(
-      (candidate) =>
-        movingIds.includes(candidate.id) && Boolean(objectMoveAnchor(candidate)),
+    const movingObjects = objects.filter((candidate) =>
+      movingIds.includes(candidate.id),
     )
     const snapToGrid = !movingObjects.every(isGraphicObject)
-    const initialPositions = Object.fromEntries(
-      movingObjects.map((candidate) => [
-        candidate.id,
-        objectMoveAnchor(candidate) ?? { x: 0, y: 0 },
-      ]),
-    )
-    if (Object.keys(initialPositions).length === 0) {
+    const initialPositions = movingObjects.map((candidate) => ({
+      objectId: candidate.id,
+      position: objectMoveAnchor(candidate),
+    }))
+    if (initialPositions.length === 0) {
       return null
     }
-    const dragStart = start ?? (snapToGrid ? snappedEventPoint(event) : eventWorldPoint(event))
+    const dragStart = snapToGrid
+      ? snappedEventPoint(event)
+      : eventWorldPoint(event)
     return {
       type: "move",
       objectIds: movingIds,
@@ -1119,8 +971,8 @@ export function SchematicCanvas() {
 
   function moveObjectsForDrag(
     dragState: MoveDragState,
-    snappedPosition: Vec2,
-    rawPosition: Vec2,
+    snappedPosition: Point,
+    rawPosition: Point,
   ) {
     const movePoint = dragState.snapToGrid ? snappedPosition : rawPosition
     const delta = {
@@ -1128,308 +980,206 @@ export function SchematicCanvas() {
       y: movePoint.y - dragState.start.y,
     }
     moveObjects(
-      Object.fromEntries(
-        Object.entries(dragState.initialPositions).map(([id, initial]) => [
-          id,
-          { x: initial.x + delta.x, y: initial.y + delta.y },
-        ]),
-      ),
+      dragState.initialPositions.map(({ objectId, position }) => ({
+        objectId,
+        position: { x: position.x + delta.x, y: position.y + delta.y },
+      })),
     )
   }
 
-  function startMarqueeSelection(
-    position: Vec2,
+  function marqueeDragPlan(
+    position: Point,
     event: PointerEvent<SVGElement>,
-  ) {
-    setActiveDrag({
-      type: "marquee",
-      start: position,
-      current: position,
-      additive: event.shiftKey || event.metaKey || event.ctrlKey,
-    })
-    capturePointer(event.currentTarget, event.pointerId)
+  ): DragStartPlan {
+    return { drag: beginMarquee(position, modifierAdditive(event)) }
   }
 
-  function selectionIdsForRect(rect: SelectionRect): string[] {
-    return objectsMatchingSelectionRect(objects, rect)
-  }
-
-  function startPlacementToolAtPointer(
-    event: PointerEvent<SVGElement>,
-    position: Vec2,
-  ): boolean {
-    if (tool.type === "place-symbol") {
-      selectObject(null)
-      if (canDragCreateSymbol(tool.componentDefinitionId)) {
-        setActiveDrag({
-          type: "create-symbol",
-          componentDefinitionId: tool.componentDefinitionId,
-          props: tool.props,
+  function placementDragPlan(position: Point): DragStartPlan | null {
+    if (tool.type === "place-component") {
+      return {
+        select: null,
+        drag: {
+          type: "create-component",
+          component: tool.component,
           start: position,
           current: position,
-        })
-        capturePointer(event.currentTarget, event.pointerId)
-        return true
+        },
       }
-      placeSymbol(tool.componentDefinitionId, position, { props: tool.props })
-      return true
     }
     if (isAnnotationPlacementToolType(tool.type)) {
-      selectObject(null)
-      setActiveDrag({
-        type: "create-annotation",
-        toolType: tool.type,
-        start: position,
-        current: position,
-      })
-      capturePointer(event.currentTarget, event.pointerId)
-      return true
+      return {
+        select: null,
+        drag: {
+          type: "create-annotation",
+          toolType: tool.type,
+          start: position,
+          current: position,
+        },
+      }
     }
-    if (tool.type === "place-box") {
-      selectObject(null)
-      setActiveDrag({
-        type: "create-box",
-        start: position,
-        current: position,
-      })
-      capturePointer(event.currentTarget, event.pointerId)
-      return true
+    if (tool.type === "place-box" || tool.type === "place-line") {
+      return {
+        select: null,
+        drag: beginShapeCreation(
+          tool.type === "place-box" ? "create-box" : "create-line",
+          position,
+        ),
+      }
     }
-    if (tool.type === "place-line") {
-      selectObject(null)
-      setActiveDrag({
-        type: "create-line",
-        start: position,
-        current: position,
-      })
-      capturePointer(event.currentTarget, event.pointerId)
-      return true
-    }
-    return false
+    return null
   }
 
-  function startAxisDrag(axis: "x" | "y", event: PointerEvent<SVGElement>) {
-    if (editingDisabled) {
-      return
-    }
-    const position = snappedEventPoint(event)
-    startAxisDragAt(axis, position[axis], event)
-  }
-
-  function startAxisDragAt(
+  function axisDragPlan(
     axis: "x" | "y",
     line: number,
-    event: PointerEvent<SVGElement>,
-  ) {
-    if (editingDisabled) {
-      return
-    }
-    selectObject(null)
-    checkpointHistory()
-    setActiveDrag({
-      type: "axis",
-      axis,
-      line,
-      targets: captureAxisDragTargets(objects, axis, line),
-    })
-    capturePointer(event.currentTarget, event.pointerId)
+  ): DragStartPlan | null {
+    return editingDisabled
+      ? null
+      : {
+          select: null,
+          checkpoint: true,
+          drag: {
+            type: "axis",
+            axis,
+            line,
+            targets: captureAxisDragTargets(objects, axis, line),
+          },
+        }
   }
 
-  function startShapePostDragForObject(
+  function shapePostDragPlanForObject(
     objectId: string,
     event: PointerEvent<SVGElement>,
-  ): boolean {
+  ): DragStartPlan | null {
     const object = objects.find(
       (candidate): candidate is ShapePostObject =>
         candidate.id === objectId && isShapePostObject(candidate),
     )
     if (!object) {
-      return false
+      return null
     }
     const endpoint = nearestShapePostEndpoint(
       object,
       eventWorldPoint(event),
-      Math.max(10, gridSize * 0.75),
+      Math.max(10, GRID_SIZE * 0.75),
     )
     if (!endpoint) {
-      return false
+      return null
     }
-    if (event.shiftKey) {
-      return startPostGroupDrag(
-        object.id,
-        endpoint === "start" ? object.start : object.end,
-        event,
-      )
-    }
-    return startShapePostDrag(object, endpoint, event)
+    return event.shiftKey
+      ? postGroupDragPlan(
+          endpoint === "start" ? object.start : object.end,
+        )
+      : shapePostDragPlan(object, endpoint)
   }
 
-  function startShapePostDrag(
+  function shapePostDragPlan(
     object: ShapePostObject,
     endpoint: ShapePostEndpoint,
-    event: PointerEvent<SVGElement>,
-  ): boolean {
-    if (editingDisabled) {
-      return false
-    }
-    selectObject(null)
-    checkpointHistory()
-    setActiveDrag({ type: "shape-post", objectId: object.id, endpoint })
-    capturePointer(event.currentTarget, event.pointerId)
-    return true
+  ): DragStartPlan | null {
+    return editingDisabled
+      ? null
+      : {
+          select: null,
+          checkpoint: true,
+          drag: { type: "shape-post", objectId: object.id, endpoint },
+        }
   }
 
-  function startAnnotationPostDragForObject(
+  function directSelectPostDragPlan(
     objectId: string,
     event: PointerEvent<SVGElement>,
-    includeLeadEnd: boolean,
-  ): boolean {
-    const object = objects.find(
-      (candidate): candidate is GroundObject | NetLabelObject | ProbeObject =>
-        candidate.id === objectId && isLeadAnnotationObject(candidate),
-    )
-    if (!object) {
-      return false
-    }
-    const endpoint = nearestAnnotationPostEndpoint(
-      object,
-      eventWorldPoint(event),
-      Math.max(10, gridSize * 0.75),
-      includeLeadEnd,
-    )
-    if (!endpoint) {
-      return false
-    }
-    const point =
-      endpoint === "position" ? object.position : getAnnotationLeadEnd(object)
-    if (event.shiftKey) {
-      return startPostGroupDrag(object.id, point, event)
-    }
-    return startAnnotationPostDrag(object, endpoint, event)
-  }
-
-  function startAnnotationPostDrag(
-    object: GroundObject | NetLabelObject | ProbeObject,
-    endpoint: AnnotationPostEndpoint,
-    event: PointerEvent<SVGElement>,
-  ): boolean {
-    if (editingDisabled) {
-      return false
-    }
-    selectObject(null)
-    checkpointHistory()
-    setActiveDrag({ type: "annotation-post", objectId: object.id, endpoint })
-    capturePointer(event.currentTarget, event.pointerId)
-    return true
-  }
-
-  function startDirectSelectPostDragForObject(
-    objectId: string,
-    event: PointerEvent<SVGElement>,
-  ): boolean {
-    if (startSymbolPinDragForObject(objectId, event)) {
-      return true
-    }
-    if (startShapePostDragForObject(objectId, event)) {
-      return true
-    }
-    if (startAnnotationPostDragForObject(objectId, event, false)) {
-      return true
-    }
+  ): DragStartPlan | null {
     const object = objects.find((candidate) => candidate.id === objectId)
-    if (object && event.shiftKey && "position" in object) {
-      return startPostGroupDrag(object.id, object.position, event)
-    }
-    return false
+    return (
+      shapePostDragPlanForObject(objectId, event) ??
+      (object && event.shiftKey && "position" in object
+        ? postGroupDragPlan(object.position)
+        : null)
+    )
   }
 
   function canDirectSelectPostDrag(objectId: string): boolean {
     return !selectedObjectIds.some((selectedId) => selectedId !== objectId)
   }
 
-  function startPostGroupDrag(
-    objectId: string,
-    position: Vec2,
-    event: PointerEvent<SVGElement>,
-  ): boolean {
-    if (editingDisabled) {
-      return false
+  function postGroupDragPlan(position: Point): DragStartPlan | null {
+    return editingDisabled
+      ? null
+      : {
+          select: null,
+          checkpoint: true,
+          drag: { type: "post-group", position },
+        }
+  }
+
+  function panDragPlan(event: PointerEvent<SVGElement>): DragStartPlan {
+    return {
+      select: null,
+      drag: {
+        type: "pan",
+        startClient: { x: event.clientX, y: event.clientY },
+        startPan: pan,
+      },
     }
-    selectObject(null)
-    checkpointHistory()
-    setActiveDrag({ type: "post-group", position })
-    capturePointer(event.currentTarget, event.pointerId)
-    return true
   }
 
-  function capturePointer(target: SVGElement, pointerId: number) {
-    const captureTarget = target.ownerSVGElement ?? target
-    captureTarget.setPointerCapture(pointerId)
-  }
-
-  function startPanDrag(event: PointerEvent<SVGElement>) {
-    selectObject(null)
-    setActiveDrag({
-      type: "pan",
-      startClient: { x: event.clientX, y: event.clientY },
-      startPan: pan,
-    })
-    event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId)
-  }
-
-  function handleSymbolPointerDown(
-    symbolId: string,
+  function handleComponentPointerDown(
+    componentId: string,
     event: PointerEvent<SVGGElement>,
   ) {
-    const symbol = symbols.find((candidate) => candidate.id === symbolId)
+    const component = components.find((candidate) => candidate.id === componentId)
     if (
-      symbol &&
+      component &&
       event.button === 0 &&
       !editingDisabled &&
       tool.type === "select" &&
+      component.type === "logic-input" &&
       isLogicInputTogglePoint(
-        symbol,
+        component,
         eventWorldPoint(event),
-        Math.max(10, gridSize * 0.6),
+        Math.max(10, GRID_SIZE * 0.6),
       )
     ) {
       event.stopPropagation()
-      selectObject(symbolId)
-      if (isLogicInputMomentary(symbol)) {
-        const releasePosition = String(symbol.props.position ?? "0")
-        setLogicInputPosition(
-          symbolId,
-          nextLogicInputPosition(symbol) ?? "1",
-          { history: false },
-        )
-        setActiveDrag({
-          type: "held-logic-input",
-          symbolId,
-          releasePosition,
+      selectObject(componentId)
+      if (component.props.momentary) {
+        const releasePosition = component.props.position
+        setLogicInputPosition(componentId, nextLogicInputPosition(component), {
+          history: false,
         })
-        capturePointer(event.currentTarget, event.pointerId)
+        beginDrag(
+          {
+            drag: {
+              type: "held-logic-input",
+              componentId,
+              releasePosition,
+            },
+          },
+          event,
+        )
         return
       }
-      toggleLogicInputPosition(symbolId)
+      toggleLogicInputPosition(componentId)
       return
     }
     if (
-      symbol &&
+      component &&
       event.button === 0 &&
       !editingDisabled &&
       tool.type === "select" &&
       isSwitchTogglePoint(
-        symbol,
+        component,
         eventWorldPoint(event),
-        Math.max(10, gridSize * 0.6),
+        Math.max(10, GRID_SIZE * 0.6),
       )
     ) {
       event.stopPropagation()
-      selectObject(symbolId)
-      toggleSwitchState(symbolId)
+      selectObject(componentId)
+      toggleSwitchState(componentId)
       return
     }
-    handleObjectPointerDown(symbolId, event)
+    handleObjectPointerDown(componentId, event)
   }
 
   function handleObjectDoubleClick(
@@ -1457,67 +1207,80 @@ export function SchematicCanvas() {
       return
     }
     if (event.button === 1) {
-      startPanDrag(event)
+      beginDrag(panDragPlan(event), event)
       return
     }
     if (editingDisabled) {
       selectObject(wireId)
       return
     }
+
     const modifierMode = modifierDragMode(event)
+    const wire = objects.find(
+      (object): object is WireObject =>
+        object.kind === "wire" && object.id === wireId,
+    )
     if (isTemporarySelectModifier(event)) {
-      const wire = objects.find(
-        (object): object is WireObject =>
-          object.kind === "wire" && object.id === wireId,
-      )
       const pointIndex = wire
         ? nearestWirePointIndex(
             wire,
             eventWorldPoint(event),
-            Math.max(10, gridSize * 0.75),
+            Math.max(10, GRID_SIZE * 0.75),
             isRoutedWireWithBends(wire),
           )
         : null
-      if (wire && pointIndex !== null) {
-        startWirePointDrag(wire, pointIndex, event)
-        return
+      const plan =
+        wire && pointIndex !== null
+          ? wirePointDragPlan(wire, pointIndex, event)
+          : null
+      if (plan) {
+        beginDrag(plan, event)
+      } else {
+        selectObject(wireId, { toggle: true })
       }
-      selectObject(wireId, { toggle: true })
       return
     }
     if (tool.type === "draw-wire") {
-      startWireCreation(snappedEventPoint(event), event)
+      const plan = wireCreationDragPlan(snappedEventPoint(event), event)
+      if (plan) beginDrag(plan, event)
       return
     }
     if (tool.type === "drag-post" || modifierMode === "drag-post") {
-      const wire = objects.find(
-        (object): object is WireObject =>
-          object.kind === "wire" && object.id === wireId,
-      )
       const pointIndex = wire
         ? nearestWirePointIndex(
             wire,
             eventWorldPoint(event),
-            Math.max(10, gridSize * 0.75),
+            Math.max(10, GRID_SIZE * 0.75),
             true,
           )
         : null
-      if (wire && pointIndex !== null) {
-        startWirePointDrag(wire, pointIndex, event)
+      const pointPlan =
+        wire && pointIndex !== null
+          ? wirePointDragPlan(wire, pointIndex, event)
+          : null
+      if (pointPlan) {
+        beginDrag(pointPlan, event)
         return
       }
-      const split = wire
-        ? splitWireAtPoint(wire, eventWorldPoint(event), gridSize)
+      const splitPoint = wire
+        ? getRoutedWireSnapPoint(wire, eventWorldPoint(event))
+        : null
+      const split = wire && splitPoint
+        ? splitWireAtPoint(wire, splitPoint)
         : null
       if (wire && split) {
         insertWirePoint(wire.id, split.afterPointIndex, split.position)
-        selectObject(null)
-        setActiveDrag({
-          type: "wire-point",
-          wireId: wire.id,
-          pointIndex: split.afterPointIndex + 1,
-        })
-        event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId)
+        beginDrag(
+          {
+            select: null,
+            drag: {
+              type: "wire-point",
+              wireId: wire.id,
+              pointIndex: split.afterPointIndex + 1,
+            },
+          },
+          event,
+        )
       }
       return
     }
@@ -1527,50 +1290,45 @@ export function SchematicCanvas() {
       modifierMode === "drag-row" ||
       modifierMode === "drag-column"
     ) {
-      startAxisDrag(
+      const axis =
         tool.type === "drag-column" || modifierMode === "drag-column"
           ? "x"
-          : "y",
-        event,
-      )
+          : "y"
+      const position = snappedEventPoint(event)
+      const plan = axisDragPlan(axis, position[axis])
+      if (plan) beginDrag(plan, event)
       return
     }
     if (tool.type === "drag-all" || modifierMode === "drag-all") {
-      startPanDrag(event)
+      beginDrag(panDragPlan(event), event)
       return
     }
     if (tool.type === "drag-selected") {
-      startMoveForObjectIds([...selectedObjectIds, wireId], event)
-      return
-    }
-    if (isPlacementTool(tool) && isTemporarySelectModifier(event)) {
-      selectObject(wireId, { toggle: true })
-      return
-    }
-    if (
-      isPlacementTool(tool) &&
-      startPlacementToolAtPointer(event, snappedEventPoint(event))
-    ) {
-      return
-    }
-    if (tool.type === "select" && canDirectSelectPostDrag(wireId)) {
-      const wire = objects.find(
-        (object): object is WireObject =>
-          object.kind === "wire" && object.id === wireId,
+      const plan = moveDragPlanForObjectIds(
+        [...selectedObjectIds, wireId],
+        event,
       )
-      const pointIndex = wire
-        ? nearestWirePointIndex(
-            wire,
-            eventWorldPoint(event),
-            Math.max(10, gridSize * 0.75),
-            isRoutedWireWithBends(wire),
-          )
-        : null
-      if (wire && pointIndex !== null) {
-        startWirePointDrag(wire, pointIndex, event)
-        return
-      }
-      if (wire && startPendingRoutedWireReroute(wire, event)) {
+      if (plan) beginDrag(plan, event)
+      return
+    }
+    if (isPlacementTool(tool)) {
+      const plan = placementDragPlan(snappedEventPoint(event))
+      if (plan) beginDrag(plan, event)
+      return
+    }
+    if (tool.type === "select" && canDirectSelectPostDrag(wireId) && wire) {
+      const pointIndex = nearestWirePointIndex(
+        wire,
+        eventWorldPoint(event),
+        Math.max(10, GRID_SIZE * 0.75),
+        isRoutedWireWithBends(wire),
+      )
+      const plan =
+        (pointIndex !== null
+          ? wirePointDragPlan(wire, pointIndex, event)
+          : null) ?? pendingRoutedWireReroutePlan(wire)
+      if (plan) {
+        beginDrag(plan, event)
         return
       }
     }
@@ -1578,8 +1336,12 @@ export function SchematicCanvas() {
       selectObject(wireId, { toggle: true })
       return
     }
-    if (tool.type === "select" && startPendingMoveForObject(wireId, event)) {
-      return
+    if (tool.type === "select") {
+      const plan = moveDragPlanForObject(wireId, event, true)
+      if (plan) {
+        beginDrag(plan, event)
+        return
+      }
     }
     selectObject(wireId)
   }
@@ -1594,7 +1356,7 @@ export function SchematicCanvas() {
       return
     }
     if (event.button === 1) {
-      startPanDrag(event)
+      beginDrag(panDragPlan(event), event)
       return
     }
     if (editingDisabled) {
@@ -1608,36 +1370,31 @@ export function SchematicCanvas() {
       modifierMode === "drag-row" ||
       modifierMode === "drag-column"
     ) {
-      startAxisDrag(
+      const axis =
         tool.type === "drag-column" || modifierMode === "drag-column"
           ? "x"
-          : "y",
-        event,
-      )
+          : "y"
+      const position = snappedEventPoint(event)
+      const plan = axisDragPlan(axis, position[axis])
+      if (plan) beginDrag(plan, event)
       return
     }
     if (tool.type === "drag-all" || modifierMode === "drag-all") {
-      startPanDrag(event)
+      beginDrag(panDragPlan(event), event)
       return
     }
     const wire = objects.find(
       (object): object is WireObject =>
         object.kind === "wire" && object.id === wireId,
     )
-    const point = wire?.points[pointIndex]
-    if (tool.type === "drag-post" && event.shiftKey && point) {
-      startPostGroupDrag(wireId, point, event)
-      return
-    }
-    if (wire) {
-      startWirePointDrag(wire, pointIndex, event)
-    }
+    const plan = wire ? wirePointDragPlan(wire, pointIndex, event) : null
+    if (plan) beginDrag(plan, event)
   }
 
   function handleWireMidpointPointerDown(
     wireId: string,
     segmentIndex: number,
-    position: Vec2,
+    position: Point,
     event: PointerEvent<SVGRectElement>,
   ) {
     event.stopPropagation()
@@ -1645,7 +1402,7 @@ export function SchematicCanvas() {
       return
     }
     if (event.button === 1) {
-      startPanDrag(event)
+      beginDrag(panDragPlan(event), event)
       return
     }
     if (editingDisabled) {
@@ -1659,96 +1416,63 @@ export function SchematicCanvas() {
       modifierMode === "drag-row" ||
       modifierMode === "drag-column"
     ) {
-      startAxisDrag(
+      const axis =
         tool.type === "drag-column" || modifierMode === "drag-column"
           ? "x"
-          : "y",
-        event,
-      )
+          : "y"
+      const dragPosition = snappedEventPoint(event)
+      const plan = axisDragPlan(axis, dragPosition[axis])
+      if (plan) beginDrag(plan, event)
       return
     }
     if (tool.type === "drag-all" || modifierMode === "drag-all") {
-      startPanDrag(event)
+      beginDrag(panDragPlan(event), event)
       return
     }
     insertWirePoint(wireId, segmentIndex, position)
-    selectObject(
-      tool.type === "drag-post" || modifierMode === "drag-post" ? null : wireId,
+    beginDrag(
+      {
+        select:
+          tool.type === "drag-post" || modifierMode === "drag-post"
+            ? null
+            : wireId,
+        drag: { type: "wire-point", wireId, pointIndex: segmentIndex + 1 },
+      },
+      event,
     )
-    setActiveDrag({ type: "wire-point", wireId, pointIndex: segmentIndex + 1 })
-    event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId)
   }
 
-  function startWirePointDrag(
+  function wirePointDragPlan(
     wire: WireObject,
     pointIndex: number,
     event: PointerEvent<SVGElement>,
-  ): boolean {
+  ): DragStartPlan | null {
     const point = wire.points[pointIndex]
-    if (!point) {
-      return false
+    if (!point || editingDisabled) {
+      return null
     }
-    if (event.shiftKey) {
-      return startPostGroupDrag(wire.id, point, event)
-    }
-    selectObject(null)
-    checkpointHistory()
-    setActiveDrag({ type: "wire-point", wireId: wire.id, pointIndex })
-    capturePointer(event.currentTarget, event.pointerId)
-    return true
+    return event.shiftKey
+      ? postGroupDragPlan(point)
+      : {
+          select: null,
+          checkpoint: true,
+          drag: { type: "wire-point", wireId: wire.id, pointIndex },
+        }
   }
 
-  function startPendingRoutedWireReroute(
+  function pendingRoutedWireReroutePlan(
     wire: WireObject,
-    event: PointerEvent<SVGElement>,
-  ): boolean {
-    if (!isRoutedWireWithBends(wire)) {
-      return false
-    }
-    selectObject(wire.id)
-    setActiveDrag({
-      type: "pending-select-drag",
-      pointerDownTime: window.performance.now(),
-      pendingDrag: { type: "routed-wire-reroute", wireId: wire.id },
-    })
-    capturePointer(event.currentTarget, event.pointerId)
-    return true
-  }
-
-  function startSymbolPinDragForObject(
-    objectId: string,
-    event: PointerEvent<SVGElement>,
-  ): boolean {
-    const symbol = objects.find(
-      (candidate): candidate is SymbolObject =>
-        candidate.id === objectId && candidate.kind === "symbol",
-    )
-    if (!symbol) {
-      return false
-    }
-    const pin = nearestSymbolPost(
-      symbol,
-      eventWorldPoint(event),
-      Math.max(10, gridSize * 0.75),
-    )
-    if (!pin) {
-      return false
-    }
-    if (event.shiftKey) {
-      return startPostGroupDrag(symbol.id, pin.position, event)
-    }
-    if (editingDisabled) {
-      return false
-    }
-    selectObject(null)
-    checkpointHistory()
-    setActiveDrag({
-      type: "symbol-pin",
-      symbolId: symbol.id,
-      componentPinId: pin.componentPinId,
-    })
-    capturePointer(event.currentTarget, event.pointerId)
-    return true
+  ): DragStartPlan | null {
+    return isRoutedWireWithBends(wire)
+      ? {
+          select: wire.id,
+          drag: {
+            type: "pending-select-drag",
+            pointerDownTime: window.performance.now(),
+            pendingDrag: { type: "routed-wire-reroute", wireId: wire.id },
+          },
+        }
+      : null
   }
 
   function handlePostPointerDown(
@@ -1761,7 +1485,7 @@ export function SchematicCanvas() {
       return
     }
     if (event.button === 1) {
-      startPanDrag(event)
+      beginDrag(panDragPlan(event), event)
       return
     }
     if (editingDisabled) {
@@ -1773,41 +1497,34 @@ export function SchematicCanvas() {
         candidate.id === objectId && isShapePostObject(candidate),
     )
     if (shapeObject) {
-      if (tool.type === "drag-post" && event.shiftKey) {
-        startPostGroupDrag(
-          shapeObject.id,
-          postIndex === 0 ? shapeObject.start : shapeObject.end,
-          event,
-        )
-        return
-      }
-      startShapePostDrag(shapeObject, postIndex === 0 ? "start" : "end", event)
+      const endpoint = postIndex === 0 ? "start" : "end"
+      const plan =
+        tool.type === "drag-post" && event.shiftKey
+          ? postGroupDragPlan(
+              endpoint === "start" ? shapeObject.start : shapeObject.end,
+            )
+          : shapePostDragPlan(shapeObject, endpoint)
+      if (plan) beginDrag(plan, event)
       return
     }
     const annotationObject = objects.find(
       (candidate): candidate is GroundObject | NetLabelObject | ProbeObject =>
-        candidate.id === objectId && isLeadAnnotationObject(candidate),
+        candidate.id === objectId &&
+        (candidate.kind === "ground" ||
+          candidate.kind === "net-label" ||
+          candidate.kind === "probe"),
     )
-    if (!annotationObject) {
-      return
-    }
-    const endpoint: AnnotationPostEndpoint =
-      postIndex === 0 ? "position" : "leadEnd"
-    const point =
-      endpoint === "position"
-        ? annotationObject.position
-        : getAnnotationLeadEnd(annotationObject)
-    if (tool.type === "drag-post" && event.shiftKey) {
-      startPostGroupDrag(annotationObject.id, point, event)
-      return
-    }
-    startAnnotationPostDrag(annotationObject, endpoint, event)
+    if (!annotationObject) return
+    const plan = tool.type === "drag-post" && event.shiftKey
+      ? postGroupDragPlan(annotationObject.position)
+      : moveDragPlanForObject(objectId, event)
+    if (plan) beginDrag(plan, event)
   }
 
   function handlePinPointerDown(
-    symbolId: string,
-    componentPinId: string,
-    position: Vec2,
+    componentId: string,
+    pin: string,
+    position: Point,
     event: PointerEvent<SVGCircleElement>,
   ) {
     if (event.button === 2) {
@@ -1816,12 +1533,12 @@ export function SchematicCanvas() {
     }
     if (event.button === 1) {
       event.stopPropagation()
-      startPanDrag(event)
+      beginDrag(panDragPlan(event), event)
       return
     }
     if (editingDisabled) {
       event.stopPropagation()
-      selectObject(symbolId)
+      selectObject(componentId)
       return
     }
     if (
@@ -1829,14 +1546,10 @@ export function SchematicCanvas() {
       modifierDragMode(event) === "drag-post"
     ) {
       event.stopPropagation()
-      if (tool.type === "drag-post" && event.shiftKey) {
-        startPostGroupDrag(symbolId, position, event)
-        return
-      }
-      selectObject(null)
-      checkpointHistory()
-      setActiveDrag({ type: "symbol-pin", symbolId, componentPinId })
-      event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId)
+      const plan = tool.type === "drag-post" && event.shiftKey
+        ? postGroupDragPlan(position)
+        : moveDragPlanForObject(componentId, event)
+      if (plan) beginDrag(plan, event)
       return
     }
     if (tool.type === "draw-wire") {
@@ -1844,29 +1557,34 @@ export function SchematicCanvas() {
       if (event.detail >= 2) {
         setWireStart(null)
         setTool({ type: "select" })
-        selectObject(symbolId)
+        selectObject(componentId)
         return
       }
-      startWireCreation(snapToGrid(position, gridSize), event)
+      const plan = wireCreationDragPlan(snapToGrid(position, GRID_SIZE), event)
+      if (plan) beginDrag(plan, event)
     }
   }
 
-  function startWireCreation(position: Vec2, event: PointerEvent<SVGElement>) {
+  function wireCreationDragPlan(
+    position: Point,
+    event: PointerEvent<SVGElement>,
+  ): DragStartPlan | null {
     if (editingDisabled) {
-      return
+      return null
     }
     const routeStyle = wireRouteStyleFromTool(tool, event)
-    setWireRouteStyle(routeStyle)
-    setActiveDrag({
-      type: "create-wire",
-      start: position,
-      current: position,
-      routeStyle,
-    })
-    event.currentTarget.ownerSVGElement?.setPointerCapture(event.pointerId)
+    return {
+      wireRouteStyle: routeStyle,
+      drag: {
+        type: "create-wire",
+        start: position,
+        current: position,
+        routeStyle,
+      },
+    }
   }
 
-  function commitWirePoint(position: Vec2, routeStyle: WireRouteStyle) {
+  function commitWirePoint(position: Point, routeStyle: WireRouteStyle) {
     if (editingDisabled) {
       return
     }
@@ -1886,24 +1604,23 @@ export function SchematicCanvas() {
 
   function commitAnnotationPlacement(
     toolType: AnnotationPlacementTool,
-    position: Vec2,
-    leadEnd?: Vec2,
+    position: Point,
   ) {
     if (editingDisabled) {
       return
     }
     switch (toolType) {
       case "place-ground":
-        placeGround(position, leadEnd)
+        placeGround(position)
         return
       case "place-voltage-probe":
-        placeVoltageProbe(position, leadEnd)
+        placeVoltageProbe(position)
         return
       case "place-current-probe":
-        placeCurrentProbe(position, leadEnd)
+        placeCurrentProbe(position)
         return
       case "place-net-label":
-        placeNetLabel(position, undefined, leadEnd)
+        placeNetLabel(position)
         return
       case "place-text":
         placeText(position)
@@ -1912,17 +1629,11 @@ export function SchematicCanvas() {
   }
 
   function sceneWireRoutePoints(
-    start: Vec2,
-    end: Vec2,
+    start: Point,
+    end: Point,
     routeStyle: WireRouteStyle,
-  ): Vec2[] {
-    return routeStyle === "straight"
-      ? routedWirePoints(start, end, routeStyle)
-      : routeRoutedWire(start, end, {
-          fallbackStyle: routeStyle,
-          gridSize,
-          objects,
-        })
+  ): ReadonlyArray<Point> {
+    return routedWirePoints(start, end, routeStyle)
   }
 
   return (
@@ -1950,21 +1661,19 @@ export function SchematicCanvas() {
         onContextMenu={handleCanvasContextMenu}
       >
         <g transform={`translate(${pan.x} ${pan.y}) scale(${scale})`}>
-          <GridLayer bounds={worldBounds} gridSize={gridSize} />
+          <GridLayer bounds={worldBounds} />
           <ElementLayer
             objects={objects}
             selectedIds={selectedObjectIds}
             measurements={measurements}
             netHighlightIds={netHighlightObjectIds}
-            europeanResistors={false}
-            iecGates={false}
             showPower={false}
             showValues
             showVoltage
             voltageColors={defaultVoltageColors}
             onObjectPointerDown={handleObjectPointerDown}
             onObjectDoubleClick={handleObjectDoubleClick}
-            onSymbolPointerDown={handleSymbolPointerDown}
+            onComponentPointerDown={handleComponentPointerDown}
             onWirePointerDown={handleWirePointerDown}
             onPointerEnterObject={setHoverObjectId}
             onPointerLeaveObject={() => setHoverObjectId(null)}
@@ -1974,7 +1683,7 @@ export function SchematicCanvas() {
               !editingDisabled && (tool.type === "draw-wire" || tool.type === "drag-post")
             }
             pinMode={tool.type === "drag-post" ? "primary-posts" : "all"}
-            symbols={symbols}
+            components={components}
             onPinPointerDown={handlePinPointerDown}
           />
           {axisToolMode ? null : (
@@ -2028,9 +1737,7 @@ export function SchematicCanvas() {
           ) : null}
           <CreationPreviewLayer
             annotationPreview={activeAnnotationPreview}
-            europeanResistors={false}
-            iecGates={false}
-            symbolPreview={activeSymbolPreview}
+            componentPreview={activeComponentPreview}
           />
           {activeBoxPreview ? (
             <g className="creation-preview-layer" data-testid="box-preview-layer">
@@ -2091,7 +1798,6 @@ export function SchematicCanvas() {
       </div>
       <CanvasStatusBar
         cursor={hoverPoint}
-        gridSize={gridSize}
         hoverObjectId={hoverObjectId}
         measurements={measurements}
         objects={objects}
@@ -2107,7 +1813,7 @@ function ScrollValuePopup({ popup }: { popup: WheelValuePopupState }) {
   return (
     <div
       className="scroll-value-popup"
-      data-symbol-id={popup.symbolId}
+      data-component-id={popup.componentId}
       data-testid="scroll-value-popup"
       style={{ left: popup.x, top: popup.y }}
     >
@@ -2127,26 +1833,6 @@ function ScrollValuePopup({ popup }: { popup: WheelValuePopupState }) {
   )
 }
 
-function objectMoveAnchor(object: SchematicObject): Vec2 | null {
-  if (object.kind === "wire") {
-    return object.points[0] ?? null
-  }
-  if (object.kind === "line") {
-    return object.start
-  }
-  if (object.kind === "box") {
-    return object.start
-  }
-  if ("position" in object) {
-    return object.position
-  }
-  return null
-}
-
-function isGraphicObject(object: SchematicObject): boolean {
-  return object.kind === "box" || object.kind === "line" || object.kind === "text"
-}
-
 function isShapePostObject(object: SchematicObject): object is ShapePostObject {
   return object.kind === "line" || object.kind === "box"
 }
@@ -2154,7 +1840,7 @@ function isShapePostObject(object: SchematicObject): object is ShapePostObject {
 function shouldIgnoreOutOfBoundsDrag(drag: DragState): boolean {
   return (
     drag.type === "pan" ||
-    drag.type === "create-symbol" ||
+    drag.type === "create-component" ||
     drag.type === "create-annotation" ||
     drag.type === "create-box" ||
     drag.type === "create-line" ||
@@ -2164,7 +1850,7 @@ function shouldIgnoreOutOfBoundsDrag(drag: DragState): boolean {
 
 function nearestShapePostEndpoint(
   object: ShapePostObject,
-  point: Vec2,
+  point: Point,
   tolerance: number,
 ): ShapePostEndpoint | null {
   const startDistance = distance(point, object.start)
@@ -2176,52 +1862,10 @@ function nearestShapePostEndpoint(
   return startDistance <= endDistance ? "start" : "end"
 }
 
-function nearestAnnotationPostEndpoint(
-  object: GroundObject | NetLabelObject | ProbeObject,
-  point: Vec2,
-  tolerance: number,
-  includeLeadEnd: boolean,
-): AnnotationPostEndpoint | null {
-  const positionDistance = distance(point, object.position)
-  const leadEnd = getAnnotationLeadEnd(object)
-  const leadEndDistance =
-    includeLeadEnd && hasAnnotationLead(object)
-      ? distance(point, leadEnd)
-      : Number.POSITIVE_INFINITY
-  const nearest = Math.min(positionDistance, leadEndDistance)
-  if (nearest > tolerance) {
-    return null
-  }
-  return positionDistance <= leadEndDistance ? "position" : "leadEnd"
-}
-
-function nearestSymbolPost(
-  symbol: SymbolObject,
-  point: Vec2,
-  tolerance: number,
-): { componentPinId: string; position: Vec2 } | null {
-  let nearestPin: { componentPinId: string; position: Vec2; distance: number } | null =
-    null
-  for (const pin of getPrimarySymbolPosts(symbol)) {
-    const pinDistance = distance(point, pin.position)
-    if (pinDistance > tolerance) {
-      continue
-    }
-    if (!nearestPin || pinDistance < nearestPin.distance) {
-      nearestPin = { ...pin, distance: pinDistance }
-    }
-  }
-  return nearestPin
-    ? {
-        componentPinId: nearestPin.componentPinId,
-        position: nearestPin.position,
-      }
-    : null
-}
 
 function nearestWirePointIndex(
   wire: WireObject,
-  point: Vec2,
+  point: Point,
   tolerance: number,
   endpointsOnly = false,
 ): number | null {
@@ -2249,53 +1893,6 @@ function isRoutedWireWithBends(wire: WireObject): boolean {
   return wire.points.length > 2 && isRoutedWire(wire)
 }
 
-function netHighlightIdsForHover({
-  hoverObjectId,
-  keyHeld,
-  measurements,
-  objects,
-}: {
-  hoverObjectId: string | null
-  keyHeld: boolean
-  measurements: CircuitMeasurementReport | null
-  objects: SchematicObject[]
-}): string[] {
-  if (!keyHeld || !hoverObjectId || !measurements) {
-    return []
-  }
-  const hoverObject = objects.find((object) => object.id === hoverObjectId)
-  if (hoverObject?.kind !== "wire") {
-    return []
-  }
-  const netId = measurements.netlist.objectToNetId[hoverObject.id]
-  if (!netId) {
-    return []
-  }
-
-  return objects
-    .filter((object) => objectTouchesNet(object, netId, measurements))
-    .map((object) => object.id)
-}
-
-function objectTouchesNet(
-  object: SchematicObject,
-  netId: string,
-  measurements: CircuitMeasurementReport,
-): boolean {
-  if (measurements.netlist.objectToNetId[object.id] === netId) {
-    return true
-  }
-  if (object.kind !== "symbol") {
-    return false
-  }
-  return getSymbolPinWorldPositions(object).some(
-    (pin) =>
-      measurements.netlist.pinToNetId[
-        pinConnectionKey(object.id, pin.componentPinId)
-      ] === netId,
-  )
-}
-
 function wireRouteStyleFromTool(
   tool: EditorTool,
   event: PointerEvent<SVGElement>,
@@ -2310,54 +1907,6 @@ function wireRouteStyleFromTool(
     return "vertical-first"
   }
   return "horizontal-first"
-}
-
-function splitWireAtPoint(
-  wire: WireObject,
-  point: Vec2,
-  gridSize: number,
-): { afterPointIndex: number; position: Vec2 } | null {
-  const snapped = snapToGrid(point, gridSize)
-  for (let index = 0; index < wire.points.length - 1; index += 1) {
-    const start = wire.points[index]
-    const end = wire.points[index + 1]
-    if (!start || !end) {
-      continue
-    }
-    const position = projectedSplitPoint(snapped, start, end)
-    if (
-      pointsEqual(position, start) ||
-      pointsEqual(position, end) ||
-      !pointOnSegment(position, start, end, gridSize / 2)
-    ) {
-      continue
-    }
-    return { afterPointIndex: index, position }
-  }
-  return null
-}
-
-function projectedSplitPoint(point: Vec2, start: Vec2, end: Vec2): Vec2 {
-  if (start.x === end.x) {
-    return { x: start.x, y: point.y }
-  }
-  if (start.y === end.y) {
-    return { x: point.x, y: start.y }
-  }
-  const dx = end.x - start.x
-  const dy = end.y - start.y
-  const lengthSquared = dx * dx + dy * dy
-  if (lengthSquared === 0) {
-    return start
-  }
-  const t = Math.max(
-    0,
-    Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared),
-  )
-  return {
-    x: Math.round(start.x + dx * t),
-    y: Math.round(start.y + dy * t),
-  }
 }
 
 function modifierDragMode(
@@ -2389,7 +1938,7 @@ function isTemporarySelectModifier(
 
 function isPlacementTool(tool: EditorTool): boolean {
   return (
-    tool.type === "place-symbol" ||
+    tool.type === "place-component" ||
     tool.type === "place-ground" ||
     tool.type === "place-voltage-probe" ||
     tool.type === "place-current-probe" ||
@@ -2400,33 +1949,12 @@ function isPlacementTool(tool: EditorTool): boolean {
   )
 }
 
-function isAnnotationPlacementToolType(
-  type: EditorTool["type"],
-): type is AnnotationPlacementTool {
-  return (
-    type === "place-ground" ||
-    type === "place-voltage-probe" ||
-    type === "place-current-probe" ||
-    type === "place-net-label" ||
-    type === "place-text"
-  )
-}
-
-function symbolPreviewFromDrag(
+function componentPreviewFromDrag(
   drag: DragState | null,
-  gridSize: number,
-): { componentDefinitionId: string; placement: SymbolPlacement } | null {
-  if (drag?.type !== "create-symbol") {
-    return null
-  }
-  const placement = getSymbolPlacement(
-    drag.componentDefinitionId,
-    drag.start,
-    drag.current,
-    gridSize,
-  )
-  return placement
-    ? { componentDefinitionId: drag.componentDefinitionId, placement }
+): { type: ComponentType; start: Point; end: Point } | null {
+  return drag?.type === "create-component" &&
+    !pointsEqual(drag.start, drag.current)
+    ? { type: drag.component, start: drag.start, end: drag.current }
     : null
 }
 
@@ -2445,17 +1973,8 @@ function annotationPreviewFromDrag(
 
 function annotationPlacementPosition(
   drag: Extract<DragState, { type: "create-annotation" }>,
-): Vec2 {
+): Point {
   return drag.toolType === "place-text" ? drag.current : drag.start
-}
-
-function annotationPlacementLeadEnd(
-  drag: Extract<DragState, { type: "create-annotation" }>,
-): Vec2 | undefined {
-  return drag.toolType === "place-text" ||
-    pointsEqual(drag.start, drag.current)
-    ? undefined
-    : drag.current
 }
 
 function annotationPreviewKindForTool(
@@ -2478,19 +1997,17 @@ function annotationPreviewKindForTool(
 function CanvasStatusBar({
   cursor,
   editingDisabled,
-  gridSize,
   hoverObjectId,
   measurements,
   objects,
   scale,
   selectedCount,
 }: {
-  cursor: Vec2 | null
+  cursor: Point | null
   editingDisabled: boolean
-  gridSize: number
   hoverObjectId: string | null
-  measurements: CircuitMeasurementReport | null
-  objects: SchematicObject[]
+  measurements: RunObservationReport | null
+  objects: ReadonlyArray<SchematicObject>
   scale: number
   selectedCount: number
 }) {
@@ -2504,7 +2021,7 @@ function CanvasStatusBar({
   return (
     <div className="canvas-status" data-testid="canvas-status">
       <span>
-        {cursor ? `x ${cursor.x}, y ${cursor.y}` : "x -, y -"} · grid {gridSize} ·
+        {cursor ? `x ${cursor.x}, y ${cursor.y}` : "x -, y -"} · grid {GRID_SIZE} ·
         zoom {Math.round(scale * 100)}% · selected {selectedCount}
         {editingDisabled ? " · editing disabled" : ""}
       </span>
@@ -2515,12 +2032,12 @@ function CanvasStatusBar({
 
 function measurementSummary(
   object: SchematicObject,
-  measurements: CircuitMeasurementReport | null,
+  measurements: RunObservationReport | null,
 ): string {
   if (!measurements) {
     return "No measurements available."
   }
-  if (object.kind === "symbol") {
+  if (object.kind === "component") {
     const component = measurements.componentMeasurements.find(
       (candidate) => candidate.objectId === object.id,
     )
@@ -2540,7 +2057,7 @@ function measurementSummary(
     }`
   }
   if (object.kind === "wire" || object.kind === "ground" || object.kind === "net-label") {
-    const netId = measurements.netlist.objectToNetId[object.id]
+    const netId = measurements.netlist.objectToNetId.get(object.id)
     const net = measurements.netVoltages.find((candidate) => candidate.netId === netId)
     return net
       ? `${net.name}: ${formatMeasurement(net.voltage, "V")}`

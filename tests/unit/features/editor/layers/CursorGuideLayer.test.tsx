@@ -1,7 +1,7 @@
 import { act } from "react"
 import { createRoot } from "react-dom/client"
 import { describe, expect, it } from "vitest"
-import { CursorGuideLayer } from "./CursorGuideLayer"
+import { CursorGuideLayer } from "@/features/editor/layers/OverlayLayer"
 
 describe("CursorGuideLayer", () => {
   it("does not draw non-schematic cursor markers by default", () => {

@@ -1,10 +1,9 @@
-import { groundBarSegmentsForLead } from "../../../lib/schematic/ground-glyph"
-import type { Vec2 } from "../../../lib/schematic/types"
+import type { Point } from "@circuit-sim/core/circuit/project"
 
-export function GroundBars({ leadVector }: { leadVector: Vec2 }) {
+export function GroundBars({ leadVector }: { leadVector: Point }) {
   return (
     <>
-      {groundBarSegmentsForLead(leadVector).map((segment, index) => {
+      {groundBarSegments(leadVector).map((segment, index) => {
         return (
           <line
             key={index}
@@ -19,4 +18,25 @@ export function GroundBars({ leadVector }: { leadVector: Vec2 }) {
       })}
     </>
   )
+}
+
+function groundBarSegments(lead: Point) {
+  const length = Math.hypot(lead.x, lead.y)
+  const along = length === 0 ? { x: 0, y: 1 } : { x: lead.x / length, y: lead.y / length }
+  const across = { x: -along.y, y: along.x }
+
+  return [0, 1, 2].map((index) => {
+    const center = { x: along.x * index * 5, y: along.y * index * 5 }
+    const halfWidth = 10 - index * 4
+    return {
+      start: {
+        x: center.x - across.x * halfWidth,
+        y: center.y - across.y * halfWidth,
+      },
+      end: {
+        x: center.x + across.x * halfWidth,
+        y: center.y + across.y * halfWidth,
+      },
+    }
+  })
 }

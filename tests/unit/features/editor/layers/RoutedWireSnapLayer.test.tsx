@@ -1,7 +1,7 @@
 import { act } from "react"
 import { createRoot } from "react-dom/client"
 import { describe, expect, it } from "vitest"
-import { RoutedWireSnapLayer } from "./RoutedWireSnapLayer"
+import { RoutedWireSnapLayer } from "@/features/editor/layers/OverlayLayer"
 
 describe("RoutedWireSnapLayer", () => {
   it("draws the schematic routed-wire snap point as a 9px oval", () => {

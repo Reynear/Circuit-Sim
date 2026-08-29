@@ -1,25 +1,36 @@
-import { useMemo } from "react"
+import { Option } from "effect"
+import { useEffect, useMemo, useState } from "react"
 import {
-  getComponentDefinition,
-  getRequiredComponentDefinition,
-} from "../../lib/schematic/component-definitions"
-import { useEditorStore } from "../../lib/schematic/editor-store"
-import { formatMeasurement } from "../../lib/simulation/measurements"
-import type { SchematicObject, SymbolObject } from "../../lib/schematic/types"
+  decodeComponentPropertyEdit,
+  getComponent,
+  readComponentProperty,
+  type AnyComponentProperty,
+  type ComponentPropertyEdit,
+  type ComponentPropertyValue,
+} from "@circuit-sim/core/circuit/components"
+import { useEditorState } from "@/browser/editor/editor-state"
+import { formatMeasurement } from "@/browser/simulation/display"
+import type {
+  SchematicObject,
+  Component,
+} from "@circuit-sim/core/circuit/project"
+import { parseSiValue, formatSiValue } from "@/browser/editor/values"
 
 export function PropertyInspector() {
-  const project = useEditorStore((state) => state.project)
-  const activeSheetId = useEditorStore((state) => state.activeSheetId)
-  const selectedObjectIds = useEditorStore((state) => state.selectedObjectIds)
-  const moveObject = useEditorStore((state) => state.moveObject)
-  const rotateObject = useEditorStore((state) => state.rotateObject)
-  const updateSymbolProps = useEditorStore((state) => state.updateSymbolProps)
-  const updateObjectText = useEditorStore((state) => state.updateObjectText)
+  const project = useEditorState((state) => state.project)
+  const selectedObjectIds = useEditorState((state) => state.selectedObjectIds)
+  const moveObject = useEditorState((state) => state.moveObject)
+  const rotateObject = useEditorState((state) => state.rotateObject)
+  const updateComponentProperty = useEditorState(
+    (state) => state.updateComponentProperty,
+  )
+  const updateObjectText = useEditorState((state) => state.updateObjectText)
   const selectedObject = useMemo(() => {
     const selectedId = selectedObjectIds[0]
-    const activeSheet = project?.sheets.find((sheet) => sheet.id === activeSheetId)
-    return activeSheet?.objects.find((object) => object.id === selectedId)
-  }, [activeSheetId, project, selectedObjectIds])
+    return project
+      ? project.objects.find((object) => object.id === selectedId)
+      : undefined
+  }, [project, selectedObjectIds])
 
   return (
     <aside className="editor-side-panel inspector">
@@ -64,11 +75,11 @@ export function PropertyInspector() {
               </label>
             </div>
           ) : null}
-          {selectedObject.kind === "symbol" ? (
-            <SymbolInspector
-              symbol={selectedObject}
+          {selectedObject.kind === "component" ? (
+            <ComponentInspector
+              component={selectedObject}
               rotateObject={rotateObject}
-              updateSymbolProps={updateSymbolProps}
+              updateComponentProperty={updateComponentProperty}
             />
           ) : (
             <ObjectDetails object={selectedObject} updateObjectText={updateObjectText} />
@@ -85,31 +96,32 @@ function MultiSelectionSummary({
 }: {
   selectedObjectIds: string[]
 }) {
-  const project = useEditorStore((state) => state.project)
-  const activeSheetId = useEditorStore((state) => state.activeSheetId)
-  const activeSheet = project?.sheets.find((sheet) => sheet.id === activeSheetId)
-  const selectedObjects =
-    activeSheet?.objects.filter((object) =>
-      selectedObjectIds.includes(object.id),
-    ) ?? []
-  const symbolCount = selectedObjects.filter((object) => object.kind === "symbol").length
+  const project = useEditorState((state) => state.project)
+  const selectedObjects = project
+    ? project.objects.filter((object) =>
+        selectedObjectIds.includes(object.id),
+      )
+    : []
+  const componentCount = selectedObjects.filter(
+    (object) => object.kind === "component",
+  ).length
   const wireCount = selectedObjects.filter((object) => object.kind === "wire").length
 
   return (
     <section className="multi-selection-summary">
       <h3>{selectedObjectIds.length} objects selected</h3>
       <p className="muted">
-        {symbolCount} symbols · {wireCount} wires ·{" "}
-        {selectedObjects.length - symbolCount - wireCount} annotations
+        {componentCount} components · {wireCount} wires ·{" "}
+        {selectedObjects.length - componentCount - wireCount} annotations
       </p>
       <p className="muted">
-        Drag a selected symbol, ground, or probe to move the selected positioned
+        Drag a selected component, ground, or probe to move the selected positioned
         objects together. Press Delete to remove the full selection.
       </p>
       <ul>
         {selectedObjects.map((object) => (
           <li key={object.id}>
-            {object.kind === "symbol"
+            {object.kind === "component"
               ? object.refdes
               : object.kind === "probe"
                 ? object.name
@@ -122,12 +134,12 @@ function MultiSelectionSummary({
 }
 
 function MeasurementSummary({ object }: { object: SchematicObject }) {
-  const measurements = useEditorStore((state) => state.measurements)
+  const measurements = useEditorState((state) => state.observations)
   if (!measurements) {
     return null
   }
 
-  if (object.kind === "symbol") {
+  if (object.kind === "component") {
     const measurement = measurements.componentMeasurements.find(
       (candidate) => candidate.objectId === object.id,
     )
@@ -183,58 +195,52 @@ function MeasurementSummary({ object }: { object: SchematicObject }) {
   return null
 }
 
-function SymbolInspector({
-  symbol,
+function ComponentInspector({
+  component,
   rotateObject,
-  updateSymbolProps,
+  updateComponentProperty,
 }: {
-  symbol: SymbolObject
+  component: Component
   rotateObject: (id: string) => void
-  updateSymbolProps: (id: string, props: Record<string, unknown>) => void
+  updateComponentProperty: (id: string, edit: ComponentPropertyEdit) => void
 }) {
-  const definition =
-    getComponentDefinition(symbol.componentDefinitionId) ??
-    getRequiredComponentDefinition("resistor")
-  const fields = getEditableFields(symbol.componentDefinitionId)
+  const spec = getComponent(component.type)
 
   return (
     <>
       <label>
         Refdes
-        <input value={symbol.refdes} readOnly />
+        <input value={component.refdes} readOnly />
       </label>
       <label>
         Type
-        <input value={definition.displayName} readOnly />
+        <input value={spec.name} readOnly />
       </label>
       <div className="inspector-actions">
         <button
           type="button"
           className="button"
-          onClick={() => rotateObject(symbol.id)}
+          onClick={() => rotateObject(component.id)}
         >
           Rotate 90
         </button>
-        <span>{symbol.rotation} deg</span>
+        <span>{component.rotation} deg</span>
       </div>
-      {fields.map((field) => (
-        <label key={field}>
-          {field}
-          <input
-            value={String(symbol.props[field] ?? "")}
-            onChange={(event) =>
-              updateSymbolProps(symbol.id, { [field]: event.target.value })
-            }
-          />
-        </label>
+      {spec.propertyList.map((property) => (
+        <ComponentPropertyInput
+          key={`${component.id}:${property.key}`}
+          component={component}
+          property={property}
+          onCommit={(edit) => updateComponentProperty(component.id, edit)}
+        />
       ))}
       <section className="pin-list">
         <h3>Pins</h3>
         <ul>
-          {definition.pins.map((pin) => (
-            <li key={pin.id}>
-              <span>{pin.name}</span>
-              <small>{pin.electricalType}</small>
+          {spec.terminals.map((pin) => (
+            <li key={pin.key}>
+              <span>{pin.label}</span>
+              <small>{pin.electrical}</small>
             </li>
           ))}
         </ul>
@@ -319,44 +325,132 @@ function ObjectDetails({
   )
 }
 
-function getEditableFields(componentDefinitionId: string): string[] {
-  switch (componentDefinitionId) {
-    case "resistor":
-    case "capacitor":
-    case "inductor":
-      return ["value"]
-    case "switch":
-      return ["state"]
-    case "potentiometer":
-      return ["value", "wiper"]
-    case "dc-voltage-source":
-      return ["voltage"]
-    case "sine-voltage-source":
-      return ["amplitude", "frequency"]
-    case "dc-current-source":
-      return ["current"]
-    case "diode":
-      return ["model"]
-    case "led":
-      return ["color"]
-    case "npn-transistor":
-    case "pnp-transistor":
-      return ["beta"]
-    case "n-mosfet":
-    case "p-mosfet":
-      return ["thresholdVoltage"]
-    case "ideal-op-amp-minus-top":
-      return ["maxOutput", "minOutput", "gain"]
-    case "logic-input":
-      return ["position", "highLogicVoltage", "lowVoltage"]
-    case "logic-output":
-      return ["threshold", "currentRequired"]
-    case "and-gate":
-    case "or-gate":
-      return ["inputCount", "highLogicVoltage"]
-    case "inverter":
-      return ["highLogicVoltage"]
-    default:
-      return []
+function ComponentPropertyInput({
+  component,
+  property,
+  onCommit,
+}: {
+  component: Component
+  property: AnyComponentProperty
+  onCommit: (edit: ComponentPropertyEdit) => void
+}) {
+  const value = readComponentProperty(property, component.props)
+  const [draft, setDraft] = useState(() => formatPropertyValue(value, property))
+  const [invalid, setInvalid] = useState(false)
+  const [focused, setFocused] = useState(false)
+
+  useEffect(() => {
+    if (!focused) {
+      setDraft(formatPropertyValue(value, property))
+      setInvalid(false)
+    }
+  }, [focused, property, value])
+
+  if (property.input === "boolean") {
+    return (
+      <label>
+        {property.label}
+        <input
+          type="checkbox"
+          checked={value === true}
+          onChange={(event) => {
+            const edit = decodeComponentPropertyEdit(property, event.target.checked)
+            if (Option.isNone(edit)) {
+              throw new Error(`${property.key} rejected its checkbox value`)
+            }
+            onCommit(edit.value)
+          }}
+        />
+      </label>
+    )
   }
+
+  if (property.input === "enum") {
+    return (
+      <label>
+        {property.label}
+        <select
+          value={String(value)}
+          onChange={(event) => {
+            const option = property.options?.find(
+              (candidate) => String(candidate.value) === event.target.value,
+            )
+            if (!option) {
+              throw new Error(`${property.key} has no matching enum option`)
+            }
+            const edit = decodeComponentPropertyEdit(property, option.value)
+            if (Option.isNone(edit)) {
+              throw new Error(`${property.key} rejected its declared enum option`)
+            }
+            onCommit(edit.value)
+          }}
+        >
+          {property.options?.map((option) => (
+            <option key={String(option.value)} value={String(option.value)}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+    )
+  }
+
+  function updateDraft(nextDraft: string) {
+    setDraft(nextDraft)
+    const parsed = parsePropertyDraft(nextDraft, property)
+    if (parsed === undefined) {
+      setInvalid(true)
+      return
+    }
+    const edit = decodeComponentPropertyEdit(property, parsed)
+    if (Option.isNone(edit)) {
+      setInvalid(true)
+      return
+    }
+    setInvalid(false)
+    onCommit(edit.value)
+  }
+
+  return (
+    <label>
+      {property.label}
+      <input
+        value={draft}
+        aria-invalid={invalid}
+        className={invalid ? "invalid-property" : undefined}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        onChange={(event) => updateDraft(event.target.value)}
+      />
+    </label>
+  )
+}
+
+function parsePropertyDraft(
+  draft: string,
+  property: AnyComponentProperty,
+): unknown | undefined {
+  if (property.input === "text") {
+    return draft.length > 0 ? draft : undefined
+  }
+  if (draft.trim() === "") {
+    return undefined
+  }
+  if (property.input === "si") {
+    return parseSiValue(draft) ?? undefined
+  }
+  if (property.input === "number") {
+    const value = Number(draft)
+    return Number.isFinite(value) ? value : undefined
+  }
+  return undefined
+}
+
+function formatPropertyValue(
+  value: ComponentPropertyValue,
+  property: AnyComponentProperty,
+): string {
+  return typeof value === "number" && property.input === "si"
+    ? formatSiValue(value)
+    : String(value)
 }

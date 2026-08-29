@@ -1,5 +1,8 @@
-import { componentDefinitions } from "../../lib/schematic/component-definitions"
-import { useEditorStore, type EditorTool } from "../../lib/schematic/editor-store"
+import {
+  components,
+  type ComponentGroup,
+} from "@circuit-sim/core/circuit/components"
+import { useEditorState, type EditorTool } from "@/browser/editor/editor-state"
 
 type PaletteTool = {
   label: string
@@ -31,41 +34,30 @@ const toolItems: PaletteTool[] = [
   { label: "Line", tool: { type: "place-line" } },
 ]
 
-const componentSections = [
-  {
-    title: "Passives",
-    ids: ["resistor", "capacitor", "inductor", "switch", "potentiometer"],
-  },
-  {
-    title: "Sources",
-    ids: ["dc-voltage-source", "sine-voltage-source", "dc-current-source"],
-  },
-  {
-    title: "Semiconductors",
-    ids: ["diode", "led", "npn-transistor", "pnp-transistor", "n-mosfet", "p-mosfet"],
-  },
-].map((section) => ({
-  ...section,
-  definitions: section.ids
-    .map((id) => componentDefinitions.find((definition) => definition.id === id))
-    .filter((definition): definition is (typeof componentDefinitions)[number] =>
-      Boolean(definition),
-    ),
-}))
+const componentSections: ReadonlyArray<{
+  title: string
+  group: ComponentGroup
+}> = [
+  { title: "Passives", group: "passive" },
+  { title: "Sources", group: "source" },
+  { title: "Semiconductors", group: "semiconductor" },
+  { title: "Active blocks", group: "active-block" },
+  { title: "Logic", group: "logic" },
+]
 
 function isActive(tool: EditorTool, candidate: EditorTool): boolean {
   if (tool.type !== candidate.type) {
     return false
   }
-  if (tool.type === "place-symbol" && candidate.type === "place-symbol") {
-    return tool.componentDefinitionId === candidate.componentDefinitionId
+  if (tool.type === "place-component" && candidate.type === "place-component") {
+    return tool.component === candidate.component
   }
   return true
 }
 
 export function ComponentPalette() {
-  const tool = useEditorStore((state) => state.tool)
-  const setTool = useEditorStore((state) => state.setTool)
+  const tool = useEditorState((state) => state.tool)
+  const setTool = useEditorState((state) => state.setTool)
 
   return (
     <aside className="editor-side-panel palette">
@@ -86,23 +78,25 @@ export function ComponentPalette() {
       {componentSections.map((section) => (
         <div className="palette-section" key={section.title}>
           <h3>{section.title}</h3>
-          {section.definitions.map((definition) => (
-            <PaletteButton
-              active={isActive(tool, {
-                type: "place-symbol",
-                componentDefinitionId: definition.id,
-              })}
-              key={definition.id}
-              label={definition.displayName}
-              shortcut={shortcutForComponent(definition.id)}
-              onClick={() =>
-                setTool({
-                  type: "place-symbol",
-                  componentDefinitionId: definition.id,
-                })
-              }
-            />
-          ))}
+          {components
+            .filter((component) => component.group === section.group)
+            .map((component) => (
+              <PaletteButton
+                active={isActive(tool, {
+                  type: "place-component",
+                  component: component.type,
+                })}
+                key={component.type}
+                label={component.name}
+                shortcut={component.shortcut}
+                onClick={() =>
+                  setTool({
+                    type: "place-component",
+                    component: component.type,
+                  })
+                }
+              />
+            ))}
         </div>
       ))}
     </aside>
@@ -118,7 +112,7 @@ function PaletteButton({
   active: boolean
   label: string
   onClick: () => void
-  shortcut?: string | null | undefined
+  shortcut?: string | undefined
 }) {
   return (
     <button
@@ -129,27 +123,4 @@ function PaletteButton({
       {shortcut ? <kbd>{shortcut}</kbd> : null}
     </button>
   )
-}
-
-function shortcutForComponent(componentDefinitionId: string): string | null {
-  switch (componentDefinitionId) {
-    case "resistor":
-      return "R"
-    case "capacitor":
-      return "C"
-    case "inductor":
-      return "Shift L"
-    case "diode":
-      return "D"
-    case "led":
-      return "L"
-    case "dc-voltage-source":
-      return "V"
-    case "sine-voltage-source":
-      return "Shift V"
-    case "dc-current-source":
-      return "Shift I"
-    default:
-      return null
-  }
 }

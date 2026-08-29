@@ -1,8 +1,8 @@
 import { act } from "react"
 import { createRoot } from "react-dom/client"
 import { describe, expect, it } from "vitest"
-import type { ElectricalIssue } from "../../../lib/schematic/erc"
-import { BadConnectionLayer } from "./BadConnectionLayer"
+import type { ElectricalIssue } from "@circuit-sim/core/circuit/erc"
+import { BadConnectionLayer } from "@/features/editor/layers/OverlayLayer"
 
 describe("BadConnectionLayer", () => {
   it("uses schematic's 7px bad-connection marker geometry", () => {

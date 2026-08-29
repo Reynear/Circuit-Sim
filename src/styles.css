@@ -280,13 +280,21 @@ a {
   color: #475569;
 }
 
-.inspector-form input {
+.inspector-form input,
+.inspector-form select {
   width: 100%;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
   background: #ffffff;
   color: #1f2937;
   padding: 8px;
+}
+
+.inspector-form input.invalid-property {
+  border-color: #dc2626;
+  background: #fef2f2;
+  color: #991b1b;
+  outline-color: #dc2626;
 }
 
 .inline-fields {
@@ -516,7 +524,7 @@ a {
   fill: #ff0000;
 }
 
-.symbol {
+.component {
   cursor: grab;
 }
 
@@ -525,9 +533,9 @@ a {
   stroke: none;
 }
 
-.symbol line,
+.component line,
 .symbol-stroke,
-.symbol .symbol-body {
+.component .symbol-body {
   fill: none;
   stroke: var(--symbol-dynamic-stroke, var(--canvas-muted-color, #d7d7d7));
   stroke-width: 2.2;
@@ -535,11 +543,11 @@ a {
   stroke-linejoin: round;
 }
 
-.symbol .symbol-body.small-stroke {
+.component .symbol-body.small-stroke {
   stroke-width: 1.6;
 }
 
-.symbol .pin-dot {
+.component .pin-dot {
   fill: var(--canvas-background-color, #000000);
   stroke: var(--symbol-dynamic-stroke, var(--canvas-muted-color, #d7d7d7));
   stroke-width: 2;
@@ -551,17 +559,17 @@ a {
   stroke-width: 2;
 }
 
-.symbol.selected .symbol-stroke,
-.symbol.selected line,
-.symbol.selected .symbol-body,
-.symbol.selected .pin-dot {
+.component.selected .symbol-stroke,
+.component.selected line,
+.component.selected .symbol-body,
+.component.selected .pin-dot {
   stroke: var(--selection-color, #00ffff);
 }
 
-.symbol.net-highlight .symbol-stroke,
-.symbol.net-highlight line,
-.symbol.net-highlight .symbol-body,
-.symbol.net-highlight .pin-dot {
+.component.net-highlight .symbol-stroke,
+.component.net-highlight line,
+.component.net-highlight .symbol-body,
+.component.net-highlight .pin-dot {
   stroke: var(--selection-color, #00ffff);
 }
 
@@ -576,7 +584,7 @@ a {
   font-size: 13px;
 }
 
-.symbol.selected .symbol-label {
+.component.selected .symbol-label {
   fill: var(--selection-color, #00ffff);
 }
 
@@ -885,6 +893,50 @@ rect.annotation-hit-area {
   min-height: 0;
 }
 
+.agent-console {
+  display: flex;
+  flex-direction: column;
+}
+
+.agent-console-output {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--border, #d7d7d7);
+  border-radius: 6px;
+  padding: 8px;
+  margin: 8px 0;
+  font-family: var(--mono, monospace);
+}
+
+.agent-console-entry {
+  margin-bottom: 8px;
+}
+
+.agent-console-command,
+.agent-console-result {
+  margin: 0;
+  padding: 2px 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.agent-console-command {
+  color: var(--accent, #2563eb);
+}
+
+.agent-console-form {
+  display: flex;
+  gap: 8px;
+}
+
+.agent-console-form input {
+  flex: 1;
+  font-family: var(--mono, monospace);
+}
+
 .panel-content {
   overflow: auto;
   padding: 12px;
@@ -929,6 +981,10 @@ rect.annotation-hit-area {
 .issue.info {
   border-color: #bfdbfe;
   background: #eff6ff;
+}
+
+.persistence-alert {
+  margin: 8px 12px;
 }
 
 .code-panel pre {
@@ -1572,13 +1628,13 @@ rect.annotation-hit-area {
   box-shadow: inset 0 0 0 1px #050505;
 }
 
-.symbol line,
+.component line,
 .symbol-stroke,
-.symbol .symbol-body {
+.component .symbol-body {
   stroke-width: 2;
 }
 
-.symbol .symbol-body.small-stroke {
+.component .symbol-body.small-stroke {
   stroke-width: 1.4;
 }
 

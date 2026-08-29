@@ -3,15 +3,15 @@ import { createRoot } from "react-dom/client"
 import { describe, expect, it } from "vitest"
 import type {
   SchematicObject,
-  SymbolObject,
+  Component,
   TextObject,
   WireObject,
-} from "../../../lib/schematic/types"
-import { ElementLayer } from "./ElementLayer"
+} from "@circuit-sim/core/circuit/project"
+import { ElementLayer } from "@/features/editor/layers/ElementLayer"
 
 describe("ElementLayer", () => {
-  it("renders objects in CircuitProject order to match schematic elmList drawing", () => {
-    const symbol = testResistor("sym_1")
+  it("renders committed content in direct drawing layers", () => {
+    const component = testResistor("sym_1")
     const text: TextObject = {
       kind: "text",
       id: "text_1",
@@ -26,7 +26,7 @@ describe("ElementLayer", () => {
         { x: 40, y: 0 },
       ],
     }
-    const objects: SchematicObject[] = [symbol, text, wire]
+    const objects: SchematicObject[] = [component, text, wire]
 
     const container = document.createElement("div")
     document.body.append(container)
@@ -42,7 +42,7 @@ describe("ElementLayer", () => {
               measurements={null}
               onObjectPointerDown={() => undefined}
               onObjectDoubleClick={() => undefined}
-              onSymbolPointerDown={() => undefined}
+              onComponentPointerDown={() => undefined}
               onWirePointerDown={() => undefined}
               onPointerEnterObject={() => undefined}
               onPointerLeaveObject={() => undefined}
@@ -57,7 +57,7 @@ describe("ElementLayer", () => {
         Array.from(elementLayer?.children ?? []).map((child) =>
           child.getAttribute("class"),
         ),
-      ).toEqual(["symbol-layer", "junction-layer", "wire-layer"])
+      ).toEqual(["wire-layer", "connection-dots", "component-layer", "junction-layer"])
     } finally {
       act(() => root.unmount())
       container.remove()
@@ -65,15 +65,15 @@ describe("ElementLayer", () => {
   })
 })
 
-function testResistor(id: string): SymbolObject {
+function testResistor(id: string): Component {
   return {
-    kind: "symbol",
+    kind: "component",
     id,
-    componentDefinitionId: "resistor",
-    symbolDefinitionId: "resistor",
+    type: "resistor",
     refdes: "R1",
     position: { x: 0, y: 0 },
     rotation: 0,
-    props: { resistance: "1k" },
+    flipped: false,
+    props: { resistanceOhms: 1_000 },
   }
 }

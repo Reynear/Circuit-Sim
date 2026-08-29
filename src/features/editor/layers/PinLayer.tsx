@@ -1,16 +1,16 @@
 import type { PointerEvent } from "react"
-import { getPrimarySymbolPosts } from "../../../lib/schematic/post-endpoints"
-import { getSymbolPinWorldPositions } from "../../../lib/schematic/transforms"
-import type { SymbolObject, Vec2 } from "../../../lib/schematic/types"
+import { getPrimaryComponentPosts } from "@/browser/editor/post-endpoints"
+import { getPinPosts } from "@circuit-sim/core/circuit/component-geometry"
+import type { Component, Point } from "@circuit-sim/core/circuit/project"
 
 type PinLayerProps = {
   interactive: boolean
   pinMode?: "all" | "primary-posts"
-  symbols: SymbolObject[]
+  components: ReadonlyArray<Component>
   onPinPointerDown: (
-    symbolId: string,
-    componentPinId: string,
-    position: Vec2,
+    componentId: string,
+    pin: string,
+    position: Point,
     event: PointerEvent<SVGCircleElement>,
   ) => void
 }
@@ -18,21 +18,21 @@ type PinLayerProps = {
 export function PinLayer({
   interactive,
   pinMode = "all",
-  symbols,
+  components,
   onPinPointerDown,
 }: PinLayerProps) {
   return (
     <g className={interactive ? "pin-layer" : "pin-layer inactive"}>
-      {symbols.flatMap((symbol) =>
-        symbolPinsForMode(symbol, pinMode).map((pin) => (
+      {components.flatMap((component) =>
+        componentPinsForMode(component, pinMode).map((pin) => (
           <circle
-            key={`${symbol.id}-${pin.componentPinId}`}
+            key={`${component.id}-${pin.pin}`}
             className="pin"
             cx={pin.position.x}
             cy={pin.position.y}
             r={5}
             onPointerDown={(event) =>
-              onPinPointerDown(symbol.id, pin.componentPinId, pin.position, event)
+              onPinPointerDown(component.id, pin.pin, pin.position, event)
             }
           />
         )),
@@ -41,11 +41,11 @@ export function PinLayer({
   )
 }
 
-function symbolPinsForMode(
-  symbol: SymbolObject,
+function componentPinsForMode(
+  component: Component,
   pinMode: NonNullable<PinLayerProps["pinMode"]>,
 ) {
   return pinMode === "primary-posts"
-    ? getPrimarySymbolPosts(symbol)
-    : getSymbolPinWorldPositions(symbol)
+    ? getPrimaryComponentPosts(component)
+    : getPinPosts(component)
 }
