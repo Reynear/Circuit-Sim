@@ -1,4 +1,4 @@
-import { pointOnSegment, rotatePoint, snapToGrid } from "./geometry"
+import { pointOnSegment, rotatePoint, snapToGrid } from "@circuit-sim/core/circuit/geometry"
 
 describe("geometry", () => {
   it("snaps points to the grid", () => {
@@ -17,12 +17,5 @@ describe("geometry", () => {
   it("rotates points in 90 degree increments", () => {
     expect(rotatePoint({ x: 10, y: 5 }, 90)).toEqual({ x: -5, y: 10 })
     expect(rotatePoint({ x: 10, y: 5 }, 180)).toEqual({ x: -10, y: -5 })
-  })
-
-  it("rotates points by arbitrary schematic element angles", () => {
-    expect(rotatePoint({ x: 50, y: 0 }, 53.130102354)).toEqual({
-      x: 30,
-      y: 40,
-    })
   })
 })

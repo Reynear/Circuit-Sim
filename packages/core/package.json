@@ -1,0 +1,11 @@
+{
+  "name": "@circuit-sim/core",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "dependencies": {
+    "effect": "4.0.0-rc.111"
+  }
+}
