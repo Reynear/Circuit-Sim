@@ -29,6 +29,40 @@ The best first prompt is:
 The expected result is a three-component circuit with no ERC issues and a
 simulated `VOUT` of 5 V.
 
+### Judge testing instructions
+
+1. Open the deployed `/workbench` URL in ChatGPT's in-app browser or Chrome 149+
+   with `chrome://flags/#enable-webmcp-testing` enabled.
+2. Wait for the `Agent-ready · 4 WebMCP site tools` badge.
+3. Send the prompt above and allow the page tools when the client asks.
+4. Confirm that R1, R2, and V1 appear, ERC reports zero issues, and the
+   Simulation panel reports `VOUT` at approximately 5 V.
+5. Click Undo to verify that the complete agent-authored change is reversible.
+
+The workbench requires no account or credentials and remains free to test.
+
+### What changed during the challenge
+
+Circuit Sim's initial browser-editor baseline was committed on August 21, four
+days before the challenge opened on August 25. The commit history shows that the
+substantive canonical-core redesign, agent workspace, and WebMCP product work
+were built during the challenge period, from August 29 through September 3.
+That challenge work includes:
+
+- top-level imperative WebMCP tools over the live browser editor;
+- a validated, geometry-free electrical graph compiler into `CircuitProject`;
+- circuit-hash protection against stale agent writes;
+- visible agent activity, semantic highlighting, one-step undo, and a stable
+  `/workbench` entry point;
+- exact-snapshot WebMCP simulation with evidence shown to both agent and user;
+- WebMCP boundary tests, deployment headers, Docker verification, and submission
+  documentation.
+
+The history is visible from the
+[`8b18591` baseline](https://github.com/Reynear/Circuit-Sim/commit/8b18591)
+through the
+[`9fc200e` WebMCP milestone](https://github.com/Reynear/Circuit-Sim/commit/9fc200e).
+
 ## Why it is safe to collaborate here
 
 `CircuitProject` remains the sole source of circuit truth. WebMCP is a browser
@@ -120,6 +154,7 @@ benchmarks, built on the same core.
 
 - [Three-minute demo script](docs/webmcp-demo-script.md)
 - [Hackathon submission copy](docs/webmcp-submission.md)
+- [Devpost compliance checklist](docs/devpost-checklist.md)
 - [Circuit agent design](docs/llm-circuit-agent.md)
 - [Simulation runtime](docs/simulation-runtime.md)
 

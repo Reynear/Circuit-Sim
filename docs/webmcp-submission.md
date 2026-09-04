@@ -59,6 +59,20 @@ snapshot-bound simulation, and semantic component highlighting. Tool activity
 also drives the human interface by selecting objects, opening the relevant
 panel, and showing concise status feedback.
 
+## What is new for this challenge
+
+The initial Circuit Sim browser-editor baseline was committed on August 21, four
+days before the challenge opened. The history shows that the substantive
+canonical-core redesign, agent workspace, and WebMCP product were built during
+the challenge period, from August 29 through September 3. This work added the
+complete WebMCP interface, geometry-free agent graph compiler, stale-write
+protection, visible agent activity and highlighting, dedicated shared workbench,
+exact-snapshot tool simulation, tests, isolation headers, and deployment
+packaging. Compare the `8b18591` baseline with the `9fc200e` WebMCP milestone:
+
+- `https://github.com/Reynear/Circuit-Sim/commit/8b18591`
+- `https://github.com/Reynear/Circuit-Sim/commit/9fc200e`
+
 ## Trust and safety
 
 Authoring requires the circuit hash returned by inspection. If the user edits
@@ -105,3 +119,17 @@ the simulation timeline is scrubbed.
 - Live application: `TODO`
 - Public source repository: `https://github.com/Reynear/Circuit-Sim`
 - Public YouTube demo (under three minutes): `TODO`
+
+## Testing instructions
+
+Open the live `/workbench` URL in ChatGPT's in-app browser or Chrome 149+ with
+WebMCP testing enabled. No login is required. Wait for the agent-ready badge,
+then ask:
+
+> Inspect this Circuit Sim workbench. Replace it with a 12 V voltage divider
+> using 1.4 kΩ and 1 kΩ resistors, highlight both resistors, run ngspice, and
+> explain the measured VOUT.
+
+Expected result: R1, R2, and V1 appear with zero ERC issues; the Simulation panel
+opens and reports VIN at 12 V and VOUT at approximately 5 V; Undo reverses the
+entire agent-authored circuit.
