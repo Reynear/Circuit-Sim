@@ -1,7 +1,9 @@
-Circuit design tools are visual, but agents need structured, reliable actions. Circuit Sim lets both work on one circuit. WebMCP gives the agent four semantic tools—inspect, author, simulate, and highlight—registered directly by the page. There are no screenshots, pixel coordinates, or brittle UI automation in the product workflow.
+This is Circuit Sim running beside Codex through four page-native WebMCP tools. The user asks for a real transistor design problem: bias a beta-one-hundred NPN from twelve volts, hit three target node voltages, simulate it, and explain the feedback.
 
-Here, the user asks for a twelve-volt divider using one-point-four kilo-ohm and one kilo-ohm resistors. The agent first inspects the live circuit, then sends one geometry-free electrical graph with the circuit hash it just observed. Circuit Sim validates that graph, compiles it into the canonical project, lays out an ordinary editable schematic, runs electrical-rule checks, autosaves it, and preserves the entire agent change as one undo step.
+Codex inspects the component catalog and the exact live circuit. It authors a six-component, five-net electrical graph. Circuit Sim validates it, lays it out as an ordinary editable schematic, runs electrical-rule checks, autosaves it, and keeps the complete agent edit undoable. Highlighting Q one and its resistor network grounds the explanation on the visible canvas.
 
-The highlight tool selects R one and R two on the canvas, keeping the explanation visible to the user. Then Circuit Sim runs ngspice against the exact project snapshot and opens the same evidence for both sides. V in measures twelve volts, and V out measures five volts—not a guess from the drawing.
+Ngspice measures base at one-point-seven-four volts, emitter at one-point-zero-three, and collector at nine-point-nine-seven. The roughly point-seven-volt base-emitter offset turns Q one on, while the emitter resistor creates local negative feedback.
 
-If the user changes the circuit after inspection, stale agent writes are rejected. One circuit, with interfaces designed for humans and agents. Design by conversation, verify by simulation, and see every change.
+Now the user doubles that resistor. Codex re-inspects to obtain a fresh circuit hash, makes the revision, and simulates the new snapshot. Collector voltage rises because the larger resistor reduces current and the collector resistor drops less voltage. The final answer compares evidence from both runs rather than guessing from the drawing.
+
+One circuit, with interfaces designed for humans and agents. Design by conversation, verify by simulation, and see every change.

@@ -19,7 +19,8 @@ until judging ends.
       zero known npm audit vulnerabilities
 - [x] Deployment blueprint with a public, credential-free workbench
 - [x] Script for a narrated demo under three minutes
-- [x] 67-second 1080p demo rendered locally with narration and thumbnail
+- [x] Conversation-led 63-second 1080p demo rendered locally with narration and
+      thumbnail
 
 ## Still required
 
