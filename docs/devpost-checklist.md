@@ -19,12 +19,12 @@ until judging ends.
       zero known npm audit vulnerabilities
 - [x] Deployment blueprint with a public, credential-free workbench
 - [x] Script for a narrated demo under three minutes
+- [x] 67-second 1080p demo rendered locally with narration and thumbnail
 
 ## Still required
 
 - [ ] Finish Render account sign-in and deploy the public repository
 - [ ] Verify the deployed URL in ChatGPT's in-app browser
-- [ ] Record the scripted demo with audio, keeping it under three minutes
 - [ ] Upload the demo publicly to YouTube and test it while signed out
 - [ ] Sign in to Devpost and join the WebMCP Challenge
 - [ ] Create the Devpost project entry and add a project thumbnail/gallery image

@@ -1,0 +1,7 @@
+Circuit design tools are visual, but agents need structured, reliable actions. Circuit Sim lets both work on one circuit. WebMCP gives the agent four semantic tools—inspect, author, simulate, and highlight—registered directly by the page. There are no screenshots, pixel coordinates, or brittle UI automation in the product workflow.
+
+Here, the user asks for a twelve-volt divider using one-point-four kilo-ohm and one kilo-ohm resistors. The agent first inspects the live circuit, then sends one geometry-free electrical graph with the circuit hash it just observed. Circuit Sim validates that graph, compiles it into the canonical project, lays out an ordinary editable schematic, runs electrical-rule checks, autosaves it, and preserves the entire agent change as one undo step.
+
+The highlight tool selects R one and R two on the canvas, keeping the explanation visible to the user. Then Circuit Sim runs ngspice against the exact project snapshot and opens the same evidence for both sides. V in measures twelve volts, and V out measures five volts—not a guess from the drawing.
+
+If the user changes the circuit after inspection, stale agent writes are rejected. One circuit, with interfaces designed for humans and agents. Design by conversation, verify by simulation, and see every change.

@@ -2,6 +2,12 @@
 
 Target length: 2:20–2:40. Record at 1080p or higher with narration.
 
+For a reproducible 67-second submission cut, run the production server on port
+3000 and then run `npm run demo:record`. The recorder invokes the actual page
+tool callbacks, captures the resulting editor and simulation state, and writes
+the source video and thumbnail under `artifacts/webmcp-demo/`. Add narration
+from `scripts/webmcp-demo-narration.txt` before publishing.
+
 ## 0:00–0:20 — The problem
 
 Show the empty `/workbench` canvas and the `Agent-ready` badge.
