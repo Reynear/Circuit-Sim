@@ -8,6 +8,8 @@ operate on the live schematic rather than a hidden copy: authored circuits appea
 on the canvas, component highlights guide the user, and SPICE evidence returns to
 the same interface.
 
+**Live workbench:** [circuit-sim-webmcp.onrender.com/workbench](https://circuit-sim-webmcp.onrender.com/workbench)
+
 ## WebMCP challenge build
 
 Open `/workbench` in a WebMCP-capable browser or client. The page registers four

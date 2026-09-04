@@ -116,7 +116,7 @@ the simulation timeline is scrubbed.
 
 ## Links to fill before submission
 
-- Live application: `TODO`
+- Live application: `https://circuit-sim-webmcp.onrender.com/workbench`
 - Public source repository: `https://github.com/Reynear/Circuit-Sim`
 - Public YouTube demo (under three minutes): `TODO`
 

@@ -18,14 +18,14 @@ until judging ends.
 - [x] Automated tests, TypeScript checks, production build, Docker build, and
       zero known npm audit vulnerabilities
 - [x] Deployment blueprint with a public, credential-free workbench
-- [x] Script for a narrated demo under three minutes
-- [x] Conversation-led 63-second 1080p demo rendered locally with narration and
-      thumbnail
+- [x] Authentic 74-second Codex desktop and in-app-browser capture recorded
+      locally with two BJT simulations
 
 ## Still required
 
-- [ ] Finish Render account sign-in and deploy the public repository
+- [ ] Wait for the Render deployment to complete and verify the public URL
 - [ ] Verify the deployed URL in ChatGPT's in-app browser
+- [ ] Add human narration to the authentic Codex desktop capture
 - [ ] Upload the demo publicly to YouTube and test it while signed out
 - [ ] Sign in to Devpost and join the WebMCP Challenge
 - [ ] Create the Devpost project entry and add a project thumbnail/gallery image
@@ -38,6 +38,6 @@ until judging ends.
 ## Final link set
 
 - Source: `https://github.com/Reynear/Circuit-Sim`
-- Live workbench: `TODO`
+- Live workbench: `https://circuit-sim-webmcp.onrender.com/workbench`
 - Public YouTube demo: `TODO`
 - Devpost project: `TODO`

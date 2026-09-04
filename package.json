@@ -33,7 +33,6 @@
     "benchmark:pi:intent": "jiti benchmarks/run-intent.ts --client pi",
     "benchmark:reset": "node scripts/reset-benchmark.mjs",
     "benchmark:down": "docker compose down",
-    "demo:record": "node scripts/record-webmcp-demo-chat.mjs",
     "verify:spice-runtime": "node scripts/verify-spice-runtime.mjs"
   },
   "dependencies": {

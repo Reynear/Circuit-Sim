@@ -1,13 +1,7 @@
 # Circuit Sim WebMCP demo script
 
-Target length: 2:20–2:40. Record at 1080p or higher with narration.
-
-For a reproducible 63-second submission cut, run the production server on port
-3000 and then run `npm run demo:record`. The recorder invokes the actual page
-tool callbacks, presents them as a Codex-and-browser conversation, captures two
-BJT-bias circuit revisions and simulation runs, and writes the source video and
-thumbnail under `artifacts/webmcp-demo-chat/`. Add narration
-from `scripts/webmcp-demo-narration.txt` before publishing.
+Target length: 60–90 seconds. Record the actual Codex desktop app with its
+in-app browser open beside the task and add human narration.
 
 ## 0:00–0:20 — The problem
 

@@ -1,9 +1,0 @@
-This is Circuit Sim running beside Codex through four page-native WebMCP tools. The user asks for a real transistor design problem: bias a beta-one-hundred NPN from twelve volts, hit three target node voltages, simulate it, and explain the feedback.
-
-Codex inspects the component catalog and the exact live circuit. It authors a six-component, five-net electrical graph. Circuit Sim validates it, lays it out as an ordinary editable schematic, runs electrical-rule checks, autosaves it, and keeps the complete agent edit undoable. Highlighting Q one and its resistor network grounds the explanation on the visible canvas.
-
-Ngspice measures base at one-point-seven-four volts, emitter at one-point-zero-three, and collector at nine-point-nine-seven. The roughly point-seven-volt base-emitter offset turns Q one on, while the emitter resistor creates local negative feedback.
-
-Now the user doubles that resistor. Codex re-inspects to obtain a fresh circuit hash, makes the revision, and simulates the new snapshot. Collector voltage rises because the larger resistor reduces current and the collector resistor drops less voltage. The final answer compares evidence from both runs rather than guessing from the drawing.
-
-One circuit, with interfaces designed for humans and agents. Design by conversation, verify by simulation, and see every change.
