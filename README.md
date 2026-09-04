@@ -64,6 +64,8 @@ that builds the same Dockerfile and health-checks `/workbench`. Connect the publ
 repository as a Render Blueprint; no application environment variables are
 required for the browser workbench or SPICE demo.
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2FReynear%2FCircuit-Sim)
+
 ### Local development
 
 Circuit Sim requires Node.js 24 and npm 11.
@@ -120,6 +122,8 @@ benchmarks, built on the same core.
 - [Hackathon submission copy](docs/webmcp-submission.md)
 - [Circuit agent design](docs/llm-circuit-agent.md)
 - [Simulation runtime](docs/simulation-runtime.md)
+
+Source: [github.com/Reynear/Circuit-Sim](https://github.com/Reynear/Circuit-Sim)
 
 ## License
 

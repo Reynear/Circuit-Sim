@@ -103,5 +103,5 @@ the simulation timeline is scrubbed.
 ## Links to fill before submission
 
 - Live application: `TODO`
-- Public source repository: `TODO`
+- Public source repository: `https://github.com/Reynear/Circuit-Sim`
 - Public YouTube demo (under three minutes): `TODO`
