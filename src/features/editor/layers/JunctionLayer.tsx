@@ -9,6 +9,7 @@ import type {
 } from "@circuit-sim/core/circuit/project"
 import { TextNote } from "./TextNote"
 import { GroundBars } from "./GroundGlyph"
+import { netLabelFlagWidth } from "./net-label-geometry"
 
 type RenderableObject =
   | GroundObject
@@ -97,11 +98,12 @@ function RenderableObjectShape({ object }: { object: RenderableObject }) {
     )
   }
   if (object.kind === "net-label") {
+    const width = netLabelFlagWidth(object.text)
     return (
       <>
         <AnnotationLead x={17} />
         <g transform="translate(17 0)">
-          <path className="label-flag" d="M 0 0 L 12 -7 L 54 -7 L 54 7 L 12 7 Z" />
+          <path className="label-flag" d={`M 0 0 L 12 -7 L ${width} -7 L ${width} 7 L 12 7 Z`} />
           <text x={15} y={4}>
             {object.text}
           </text>

@@ -12,6 +12,7 @@ import {
   type Signals,
 } from "@circuit-sim/core/simulation/signals"
 import { generateSpiceNetlist } from "@circuit-sim/core/simulation/spice-netlist"
+import type { SpiceElementBinding } from "@circuit-sim/core/simulation/spice-netlist"
 
 export function runSpiceSimulation(
   project: CircuitProject,
@@ -74,14 +75,7 @@ type SpiceTranResult = NonNullable<ReturnType<typeof simulate>["tran"]>
 function tranSignals(
   tran: SpiceTranResult,
   netNameByNodeName: ReadonlyArray<NodeNetName>,
-  elements: ReadonlyArray<{
-    refdes: string
-    spiceName: string
-    pin1Label: string
-    pin2Label: string
-    n1: string
-    n2: string
-  }>,
+  elements: ReadonlyArray<SpiceElementBinding>,
 ): Signals {
   return buildTranSignals({
     times: tran.times,
@@ -91,21 +85,46 @@ function tranSignals(
     })),
     nodeNetNames: netNameByNodeName,
     elementCurrents: elements.flatMap(
-      (element): Array<{ element: SignalElement; current: ReadonlyArray<number> }> => {
+      (element): Array<{
+        element: SignalElement
+        terminalCurrents: Array<{
+          label: string
+          current: ReadonlyArray<number>
+        }>
+      }> => {
+        const expressions = new Set(
+          element.terminals.flatMap((terminal) =>
+            terminal.currentExpression ? [terminal.currentExpression] : [],
+          ),
+        )
         const current = tran.elementCurrents[element.spiceName]
-        return current
-          ? [
-              {
-                element: {
-                  refdes: element.refdes,
-                  pin1Label: element.pin1Label,
-                  pin2Label: element.pin2Label,
-                  n1: element.n1,
-                  n2: element.n2,
-                },
-                current,
+        const terminalCurrents = element.terminals.flatMap((terminal) => {
+          const constantCurrent = terminal.constantCurrent
+          const values = constantCurrent === undefined
+            ? current && expressions.size === 1
+              ? current
+              : null
+            : tran.times.map(() => constantCurrent)
+          return values
+            ? [{
+                label: terminal.label,
+                current: terminal.negate
+                  ? values.map((value) => -value)
+                  : values,
+              }]
+            : []
+        })
+        return terminalCurrents.length > 0
+          ? [{
+              element: {
+                refdes: element.refdes,
+                terminals: element.terminals.map((terminal) => ({
+                  label: terminal.label,
+                  node: terminal.node,
+                })),
               },
-            ]
+              terminalCurrents,
+            }]
           : []
       },
     ),

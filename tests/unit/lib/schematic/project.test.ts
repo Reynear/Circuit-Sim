@@ -73,4 +73,70 @@ describe("component schema", () => {
       ),
     ).toBe(true)
   })
+
+  it("rejects reversed or equal ideal op amp output limits", () => {
+    const base = {
+      kind: "component",
+      id: newId(),
+      type: "ideal-op-amp-minus-top",
+      refdes: "U1",
+      position: { x: 0, y: 0 },
+      rotation: 0,
+      flipped: false,
+    }
+
+    expect(
+      Option.isNone(
+        Schema.decodeUnknownOption(ComponentSchema)({
+          ...base,
+          props: { gain: 100_000, minOutputVolts: 10, maxOutputVolts: -10 },
+        }),
+      ),
+    ).toBe(true)
+    expect(
+      Option.isNone(
+        Schema.decodeUnknownOption(ComponentSchema)({
+          ...base,
+          props: { gain: 100_000, minOutputVolts: 5, maxOutputVolts: 5 },
+        }),
+      ),
+    ).toBe(true)
+  })
+
+  it("rejects invalid logic voltage ordering and unsupported input counts", () => {
+    const base = {
+      kind: "component",
+      id: newId(),
+      position: { x: 0, y: 0 },
+      rotation: 0,
+      flipped: false,
+    }
+
+    expect(
+      Option.isNone(
+        Schema.decodeUnknownOption(ComponentSchema)({
+          ...base,
+          type: "logic-input",
+          refdes: "IN1",
+          props: {
+            position: 0,
+            highLogicVoltageVolts: 0,
+            lowLogicVoltageVolts: 0,
+            ternary: false,
+            momentary: false,
+          },
+        }),
+      ),
+    ).toBe(true)
+    expect(
+      Option.isNone(
+        Schema.decodeUnknownOption(ComponentSchema)({
+          ...base,
+          type: "and-gate",
+          refdes: "U1",
+          props: { inputCount: 3, highLogicVoltageVolts: 5 },
+        }),
+      ),
+    ).toBe(true)
+  })
 })

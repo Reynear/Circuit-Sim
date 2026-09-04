@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: circuit_sim
+      POSTGRES_USER: circuit_sim
+      POSTGRES_PASSWORD: circuit_sim
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U circuit_sim -d circuit_sim"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  app:
+    build: .
+    environment:
+      DATABASE_URL: postgres://circuit_sim:circuit_sim@postgres:5432/circuit_sim
+      CIRCUIT_SIM_PUBLIC_URL: http://127.0.0.1:3000
+      NGSPICE_BIN: /usr/bin/ngspice
+      HOST: 0.0.0.0
+      PORT: 3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 3s
+      timeout: 5s
+      retries: 20

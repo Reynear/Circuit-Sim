@@ -24,6 +24,10 @@ import {
   getEditorState,
   useEditorState,
 } from "@/browser/editor/editor-state"
+import {
+  useCircuitWebMcp,
+  type WebMcpRegistrationState,
+} from "@/browser/webmcp/use-circuit-webmcp"
 import type { CircuitProject } from "@circuit-sim/core/circuit/project"
 
 type CircuitEditorPageProps = {
@@ -66,6 +70,14 @@ function CircuitEditorPageContent({ projectId }: CircuitEditorPageProps) {
     "copied" | "error" | null
   >(null)
   const [showShortcuts, setShowShortcuts] = useState(false)
+  const [agentActivity, setAgentActivity] = useState<string | null>(null)
+  const webMcpState = useCircuitWebMcp({
+    registry,
+    onActivity(activity) {
+      setAgentActivity(activity.message)
+      if (activity.panel) setActiveTab(activity.panel)
+    },
+  })
 
   useEffect(() => {
     loadedProjectId.current = null
@@ -117,6 +129,12 @@ function CircuitEditorPageContent({ projectId }: CircuitEditorPageProps) {
       }
     })
   }, [dirty, markSaved, project, saveProject])
+
+  useEffect(() => {
+    if (!agentActivity) return
+    const timeout = window.setTimeout(() => setAgentActivity(null), 2600)
+    return () => window.clearTimeout(timeout)
+  }, [agentActivity])
 
   async function saveNow() {
     if (!project) {
@@ -258,6 +276,7 @@ function CircuitEditorPageContent({ projectId }: CircuitEditorPageProps) {
         onCopyCircuitImage={() => void copyCircuitImageToClipboard()}
         onShowShortcuts={() => setShowShortcuts(true)}
       />
+      <WebMcpStatus state={webMcpState} />
       {saveResult._tag === "Failure" &&
       !AsyncResult.isInterrupted(saveResult) ? (
         <p className="issue error persistence-alert" role="alert">
@@ -285,6 +304,26 @@ function CircuitEditorPageContent({ projectId }: CircuitEditorPageProps) {
             : "Image clipboard export is not available."}
         </div>
       ) : null}
+      {agentActivity ? (
+        <div className="status-toast agent-activity-toast" role="status">
+          {agentActivity}
+        </div>
+      ) : null}
     </main>
+  )
+}
+
+function WebMcpStatus({ state }: { state: WebMcpRegistrationState }) {
+  if (state === "unsupported" || state === "checking") return null
+  return (
+    <div
+      className={`webmcp-status ${state}`}
+      data-testid="webmcp-status"
+      role="status"
+    >
+      {state === "ready"
+        ? "Agent-ready · 4 WebMCP site tools are live on this circuit"
+        : "WebMCP site tools could not be registered in this browser"}
+    </div>
   )
 }

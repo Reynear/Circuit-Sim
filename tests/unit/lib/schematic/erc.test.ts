@@ -41,4 +41,38 @@ describe("ERC", () => {
     const issues = runErc(createRcLowPassExample())
     expect(issues.filter((issue) => issue.severity === "error")).toHaveLength(0)
   })
+
+  it("rejects a nonzero implicit-reference rail connected directly to GND", () => {
+    const emptyProject = newCircuitProject()
+    const project = {
+      ...emptyProject,
+      objects: [
+        {
+          kind: "component" as const,
+          id: newId(),
+          type: "dc-power-rail" as const,
+          refdes: "VCC",
+          position: { x: 0, y: 0 },
+          rotation: 0 as const,
+          flipped: false,
+          props: { voltageVolts: 5 },
+        },
+        {
+          kind: "ground" as const,
+          id: newId(),
+          position: { x: 0, y: 40 },
+          netName: "GND" as const,
+        },
+      ],
+    }
+
+    expect(runErc(project)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          severity: "error",
+          message: "VCC.RAIL cannot drive GND to a nonzero voltage.",
+        }),
+      ]),
+    )
+  })
 })

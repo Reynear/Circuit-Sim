@@ -54,6 +54,22 @@ export function runErc(project: CircuitProject): ElectricalIssue[] {
       }
     }
 
+    if (
+      electricalComponent?.behavior.kind === "dc-power-rail" &&
+      electricalComponent.behavior.volts !== 0 &&
+      electricalComponent.terminals.find((terminal) => terminal.key === "rail")
+        ?.net === "GND"
+    ) {
+      issues.push(
+        issue(
+          "error",
+          `${component.refdes}.RAIL cannot drive GND to a nonzero voltage.`,
+          [component.id],
+          [component.position],
+        ),
+      )
+    }
+
   }
 
   for (const probe of probes) {

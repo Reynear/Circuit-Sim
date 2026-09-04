@@ -9,10 +9,18 @@ function HomePage() {
     <main className="home-page">
       <section className="home-panel">
         <h1>Circuit Sim</h1>
-        <p>Browser schematic design, ERC, and SPICE simulation.</p>
-        <Link className="primary-link" to="/projects">
-          Open projects
-        </Link>
+        <p>
+          A shared browser workbench where people and agents design, inspect,
+          and simulate the same circuit.
+        </p>
+        <div className="button-row">
+          <Link className="primary-link" to="/workbench">
+            Open Agent Workbench
+          </Link>
+          <Link className="button" to="/projects">
+            Browse Projects
+          </Link>
+        </div>
       </section>
     </main>
   )

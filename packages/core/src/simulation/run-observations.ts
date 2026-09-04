@@ -157,6 +157,13 @@ function terminalVoltage(
   component: ElectricalComponent | undefined,
   voltageOf: (netName: string) => number | undefined,
 ): number | undefined {
+  if (component?.behavior.kind === "dc-power-rail") {
+    const railNet = component.terminals.find(
+      (terminal) => terminal.key === "rail",
+    )?.net
+    return railNet ? voltageOf(railNet) : undefined
+  }
+  if (component?.terminals.length !== 2) return undefined
   const firstNet = component?.terminals[0]?.net
   const secondNet = component?.terminals[1]?.net
   if (!firstNet || !secondNet) return undefined

@@ -5,6 +5,10 @@ import * as Atom from "effect/unstable/reactivity/Atom"
 import * as AtomRegistry from "effect/unstable/reactivity/AtomRegistry"
 import { newId } from "@circuit-sim/core/ids"
 import {
+  compileAgentElectricalGraph,
+  type AgentElectricalGraph,
+} from "@circuit-sim/core/agent/electrical-graph"
+import {
   getNextRefdes,
   getComponent,
   type ComponentPropertyEdit,
@@ -149,6 +153,7 @@ export type EditorState = {
   toggleLogicInputPosition(id: string): void
   updateComponentProperty(id: string, edit: ComponentPropertyEdit): void
   updateObjectText(id: string, text: string): void
+  replaceElectricalGraph(graph: AgentElectricalGraph): void
   setLatestRun(run: SimulationRun): void
   recompute(): void
   markSaved(savedProject: CircuitProject): void
@@ -894,6 +899,13 @@ function createEditorActions(set: StoreSet, get: StoreGet): EditorActions {
           }),
         ),
       )
+    },
+
+    replaceElectricalGraph(graph) {
+      mutateProject(set, get, (project) =>
+        compileAgentElectricalGraph(project, graph),
+      )
+      set({ selectedObjectIds: [] })
     },
 
     recompute() {

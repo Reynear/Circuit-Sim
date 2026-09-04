@@ -1,6 +1,12 @@
 import type { Point } from "@circuit-sim/core/circuit/project"
 
-export function GroundBars({ leadVector }: { leadVector: Point }) {
+export function GroundBars({
+  leadVector,
+  includeTestId = true,
+}: {
+  leadVector: Point
+  includeTestId?: boolean
+}) {
   return (
     <>
       {groundBarSegments(leadVector).map((segment, index) => {
@@ -8,7 +14,7 @@ export function GroundBars({ leadVector }: { leadVector: Point }) {
           <line
             key={index}
             className="symbol-stroke ground-bar"
-            data-testid="ground-bar"
+            data-testid={includeTestId ? "ground-bar" : undefined}
             x1={segment.start.x}
             y1={segment.start.y}
             x2={segment.end.x}

@@ -41,3 +41,65 @@ export function getWorldBounds(component: Component) {
   const bottom = Math.max(...ys)
   return { x: left, y: top, width: right - left, height: bottom - top }
 }
+
+export type ComponentLabelPosition = {
+  readonly x: number
+  readonly y: number
+  readonly textAnchor: "start" | "middle" | "end"
+}
+
+export function getComponentLabelPositions(component: Component): {
+  readonly refdes: ComponentLabelPosition
+  readonly value: ComponentLabelPosition
+} {
+  if (component.type === "dc-power-rail") {
+    if (component.rotation === 0) {
+      return {
+        refdes: {
+          x: component.position.x,
+          y: component.position.y - 50,
+          textAnchor: "middle",
+        },
+        value: {
+          x: component.position.x,
+          y: component.position.y - 33,
+          textAnchor: "middle",
+        },
+      }
+    }
+    if (component.rotation === 180) {
+      return {
+        refdes: {
+          x: component.position.x,
+          y: component.position.y + 42,
+          textAnchor: "middle",
+        },
+        value: {
+          x: component.position.x,
+          y: component.position.y + 59,
+          textAnchor: "middle",
+        },
+      }
+    }
+  }
+  const bounds = getWorldBounds(component)
+  if (component.rotation === 90 || component.rotation === 270) {
+    const x = bounds.x - 10
+    return {
+      refdes: { x, y: component.position.y - 4, textAnchor: "end" },
+      value: { x, y: component.position.y + 13, textAnchor: "end" },
+    }
+  }
+  return {
+    refdes: {
+      x: component.position.x,
+      y: bounds.y - 8,
+      textAnchor: "middle",
+    },
+    value: {
+      x: component.position.x,
+      y: bounds.y + bounds.height + 18,
+      textAnchor: "middle",
+    },
+  }
+}

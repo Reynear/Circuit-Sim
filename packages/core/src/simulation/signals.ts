@@ -91,10 +91,10 @@ export function displaySignals(signals: Signals, metric: SignalMetric): Signal[]
 
 export type SignalElement = {
   refdes: string
-  pin1Label: string
-  pin2Label: string
-  n1: string
-  n2: string
+  terminals: ReadonlyArray<{
+    label: string
+    node: string
+  }>
 }
 
 export class InvalidSignalSeries extends Data.TaggedError(
@@ -117,7 +117,10 @@ export type TranSignalInput = {
   nodeNetNames: ReadonlyArray<NodeNetName>
   elementCurrents: ReadonlyArray<{
     element: SignalElement
-    current: ReadonlyArray<number>
+    terminalCurrents: ReadonlyArray<{
+      label: string
+      current: ReadonlyArray<number>
+    }>
   }>
 }
 
@@ -138,28 +141,35 @@ export function buildTranSignals(input: TranSignalInput): Signals {
     }
   }
 
-  for (const { element, current } of input.elementCurrents) {
-    const currentIntoPin1 = series(current)
-    signals.push({
-      name: `I(${element.refdes}.${element.pin1Label})`,
-      unit: "A",
-      points: currentIntoPin1,
-    })
-    signals.push({
-      name: `I(${element.refdes}.${element.pin2Label})`,
-      unit: "A",
-      points: currentIntoPin1.map((point) => ({ t: point.t, v: -point.v })),
-    })
-    const v1 = nodeSeries(input.nodeVoltages, element.n1, pointCount)
-    const v2 = nodeSeries(input.nodeVoltages, element.n2, pointCount)
-    signals.push({
-      name: `P(${element.refdes})`,
-      unit: "W",
-      points: input.times.map((t, index) => ({
-        t,
-        v: (v1[index]! - v2[index]!) * current[index]!,
-      })),
-    })
+  for (const { element, terminalCurrents } of input.elementCurrents) {
+    for (const terminal of terminalCurrents) {
+      signals.push({
+        name: `I(${element.refdes}.${terminal.label})`,
+        unit: "A",
+        points: series(terminal.current),
+      })
+    }
+    if (terminalCurrents.length === element.terminals.length) {
+      const currentByLabel = new Map(
+        terminalCurrents.map((terminal) => [terminal.label, terminal.current]),
+      )
+      const terminalSeries = element.terminals.map((terminal) => ({
+        voltage: nodeSeries(input.nodeVoltages, terminal.node, pointCount),
+        current: currentByLabel.get(terminal.label)!,
+      }))
+      signals.push({
+        name: `P(${element.refdes})`,
+        unit: "W",
+        points: input.times.map((t, index) => ({
+          t,
+          v: terminalSeries.reduce(
+            (power, terminal) =>
+              power + terminal.voltage[index]! * terminal.current[index]!,
+            0,
+          ),
+        })),
+      })
+    }
   }
   return signals
 }
@@ -207,9 +217,14 @@ function validateTranSignalInput(input: TranSignalInput): void {
     }
     validateSeries(`Voltage series for net ${netName}`, values)
   }
-  for (const { element, current } of input.elementCurrents) {
-    validateSeries(`Current series for ${element.refdes}`, current)
-    for (const nodeName of [element.n1, element.n2]) {
+  for (const { element, terminalCurrents } of input.elementCurrents) {
+    for (const terminal of terminalCurrents) {
+      validateSeries(
+        `Current series for ${element.refdes}.${terminal.label}`,
+        terminal.current,
+      )
+    }
+    for (const { node: nodeName } of element.terminals) {
       if (nodeName !== "0" && !voltageSeries(input.nodeVoltages, nodeName)) {
         throw new InvalidSignalSeries({
           series: `Terminal voltage for ${element.refdes} node ${nodeName}`,

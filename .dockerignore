@@ -5,6 +5,8 @@ test-results
 .tanstack
 .svelte-kit
 output
+.output
+artifacts
 .env
 .DS_Store
 *.png

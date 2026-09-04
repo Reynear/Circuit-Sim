@@ -227,6 +227,7 @@ function shouldKeepPinOnlyGroup(group: NetNode[], groundedSources: Set<string>):
   return (
     group.some((node) => node.kind !== "pin") ||
     pins.length > 1 ||
+    pins.some((pin) => pin.type === "dc-power-rail") ||
     pins.some((pin) => isGroundReferencedVoltageSourceOutputPin(pin, groundedSources))
   )
 }

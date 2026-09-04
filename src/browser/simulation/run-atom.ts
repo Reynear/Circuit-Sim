@@ -50,38 +50,46 @@ export type SimulationRunOutcome =
       readonly error: ProjectPersistenceError
     }
 
+export function runAndRecordSimulation(
+  runServerSimulation: ServerSimulationRunner,
+  request: {
+    readonly project: CircuitProject
+    readonly engine: SpiceEnginePreference
+  },
+): Effect.Effect<SimulationRunOutcome, SimulationRequestError> {
+  return Effect.gen(function*() {
+    const output = yield* Effect.tryPromise({
+      try: async () => {
+        const encodedProject = await Schema.encodePromise(CircuitProjectSchema)(
+          request.project,
+        )
+        const encodedOutput = await runServerSimulation({
+          data: { project: encodedProject, engine: request.engine },
+        })
+        return Schema.decodePromise(SimulationOutputSchema, {
+          onExcessProperty: "error",
+        })(encodedOutput)
+      },
+      catch: (cause) => new SimulationRequestError({ cause }),
+    })
+
+    const persisted = yield* Effect.result(
+      recordSimulationRun({ project: request.project, output }),
+    )
+    return Result.match(persisted, {
+      onFailure: (error): SimulationRunOutcome => ({
+        _tag: "PersistenceFailure",
+        output,
+        error,
+      }),
+      onSuccess: (run): SimulationRunOutcome => ({ _tag: "Saved", run }),
+    })
+  })
+}
+
 export function makeSimulationRunAtom(runServerSimulation: ServerSimulationRunner) {
   return Atom.fn<{
     readonly project: CircuitProject
     readonly engine: SpiceEnginePreference
-  }>()(({ project, engine }) =>
-    Effect.gen(function*() {
-      const output = yield* Effect.tryPromise({
-        try: async () => {
-          const encodedProject = await Schema.encodePromise(CircuitProjectSchema)(
-            project,
-          )
-          const encodedOutput = await runServerSimulation({
-            data: { project: encodedProject, engine },
-          })
-          return Schema.decodePromise(SimulationOutputSchema, {
-            onExcessProperty: "error",
-          })(encodedOutput)
-        },
-        catch: (cause) => new SimulationRequestError({ cause }),
-      })
-
-      const persisted = yield* Effect.result(
-        recordSimulationRun({ project, output }),
-      )
-      return Result.match(persisted, {
-        onFailure: (error): SimulationRunOutcome => ({
-          _tag: "PersistenceFailure",
-          output,
-          error,
-        }),
-        onSuccess: (run): SimulationRunOutcome => ({ _tag: "Saved", run }),
-      })
-    }),
-  )
+  }>()((request) => runAndRecordSimulation(runServerSimulation, request))
 }

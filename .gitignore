@@ -28,6 +28,8 @@ vite.config.ts.timestamp-*
 /.playwright-mcp/
 /test-results/
 /circuit-editor-verification.png
+/artifacts/
 
 # Local agent planning and handoff state
 /.pi/
+/HANDOFF.md

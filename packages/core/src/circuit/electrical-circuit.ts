@@ -6,20 +6,55 @@ import type { CircuitProject, Component } from "./project"
 import { formatSiValue } from "./values"
 
 const FiniteNumberSchema = Schema.Number.check(Schema.isFinite())
+const PositiveFiniteNumberSchema = FiniteNumberSchema.check(
+  Schema.isGreaterThan(0),
+)
+const NonNegativeFiniteNumberSchema = FiniteNumberSchema.check(
+  Schema.isGreaterThanOrEqualTo(0),
+)
 
 export const ElectricalBehaviorSchema = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("resistor"), ohms: FiniteNumberSchema }),
   Schema.Struct({ kind: Schema.Literal("capacitor"), farads: FiniteNumberSchema }),
   Schema.Struct({ kind: Schema.Literal("inductor"), henries: FiniteNumberSchema }),
-  Schema.Struct({ kind: Schema.Literal("diode"), model: Schema.NonEmptyString }),
+  Schema.Struct({
+    kind: Schema.Literal("diode"),
+    model: Schema.NonEmptyString,
+    saturationCurrentAmps: PositiveFiniteNumberSchema,
+    emissionCoefficient: PositiveFiniteNumberSchema,
+    seriesResistanceOhms: NonNegativeFiniteNumberSchema,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("zener-diode"),
+    breakdownVolts: PositiveFiniteNumberSchema,
+    breakdownCurrentAmps: PositiveFiniteNumberSchema,
+    saturationCurrentAmps: PositiveFiniteNumberSchema,
+    emissionCoefficient: PositiveFiniteNumberSchema,
+    dynamicResistanceOhms: PositiveFiniteNumberSchema,
+  }),
   Schema.Struct({
     kind: Schema.Literal("dc-voltage-source"),
     volts: FiniteNumberSchema,
   }),
   Schema.Struct({
+    kind: Schema.Literal("dc-power-rail"),
+    volts: FiniteNumberSchema,
+    referenceNet: Schema.Literal("GND"),
+  }),
+  Schema.Struct({
     kind: Schema.Literal("sine-voltage-source"),
     amplitudeVolts: FiniteNumberSchema,
     frequencyHertz: FiniteNumberSchema,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("pulse-voltage-source"),
+    initialVolts: FiniteNumberSchema,
+    pulsedVolts: FiniteNumberSchema,
+    frequencyHertz: PositiveFiniteNumberSchema,
+    dutyCyclePercent: PositiveFiniteNumberSchema.check(Schema.isLessThan(100)),
+    delaySeconds: NonNegativeFiniteNumberSchema,
+    riseTimeSeconds: NonNegativeFiniteNumberSchema,
+    fallTimeSeconds: NonNegativeFiniteNumberSchema,
   }),
   Schema.Struct({
     kind: Schema.Literal("dc-current-source"),
@@ -32,12 +67,17 @@ export const ElectricalBehaviorSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("bipolar-transistor"),
     polarity: Schema.Literals(["npn", "pnp"]),
-    beta: FiniteNumberSchema,
+    beta: PositiveFiniteNumberSchema,
+    earlyVoltageVolts: PositiveFiniteNumberSchema,
+    saturationCurrentAmps: PositiveFiniteNumberSchema,
+    forwardEmissionCoefficient: PositiveFiniteNumberSchema,
   }),
   Schema.Struct({
     kind: Schema.Literal("mosfet"),
     polarity: Schema.Literals(["n", "p"]),
     thresholdVolts: FiniteNumberSchema,
+    transconductanceAmpsPerVoltSquared: PositiveFiniteNumberSchema,
+    channelLengthModulationPerVolt: NonNegativeFiniteNumberSchema,
   }),
   Schema.Struct({
     kind: Schema.Literal("ideal-op-amp"),
@@ -54,17 +94,17 @@ export const ElectricalBehaviorSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("logic-output"),
     thresholdVolts: FiniteNumberSchema,
-    requiredAmps: FiniteNumberSchema,
+    requiredAmps: NonNegativeFiniteNumberSchema,
   }),
   Schema.Struct({
     kind: Schema.Literal("logic-gate"),
     operation: Schema.Literals(["and", "or"]),
-    inputCount: FiniteNumberSchema,
-    highVolts: FiniteNumberSchema,
+    inputCount: Schema.Literal(2),
+    highVolts: PositiveFiniteNumberSchema,
   }),
   Schema.Struct({
     kind: Schema.Literal("inverter"),
-    highVolts: FiniteNumberSchema,
+    highVolts: PositiveFiniteNumberSchema,
   }),
 ])
 export type ElectricalBehavior = typeof ElectricalBehaviorSchema.Type
@@ -207,95 +247,126 @@ function behaviorOf(component: Component): ElectricalBehavior {
       return {
         kind: "diode",
         model: electrical.model ?? electrical.defaultModel,
+        saturationCurrentAmps: electrical.saturationCurrentAmps,
+        emissionCoefficient: electrical.emissionCoefficient,
+        seriesResistanceOhms: electrical.seriesResistanceOhms,
       }
-    case "voltage-source":
-      return electrical.wave === "dc"
-        ? { kind: "dc-voltage-source", volts: electrical.volts }
-        : {
-            kind: "sine-voltage-source",
-            amplitudeVolts: electrical.amplitude,
-            frequencyHertz: electrical.hertz,
-          }
-    case "current-source":
-      return { kind: "dc-current-source", amps: electrical.amps }
-    case "switch":
-      return { kind: "switch", state: electrical.state }
-    case "unmodeled":
-      return unmodeledBehaviorOf(component)
-  }
-}
-
-function unmodeledBehaviorOf(component: Component): ElectricalBehavior {
-  switch (component.type) {
-    case "npn-transistor":
-    case "pnp-transistor":
+    case "zener-diode":
+      return {
+        kind: "zener-diode",
+        breakdownVolts: electrical.breakdownVolts,
+        breakdownCurrentAmps: electrical.breakdownCurrentAmps,
+        saturationCurrentAmps: electrical.saturationCurrentAmps,
+        emissionCoefficient: electrical.emissionCoefficient,
+        dynamicResistanceOhms: electrical.dynamicResistanceOhms,
+      }
+    case "bipolar-transistor":
       return {
         kind: "bipolar-transistor",
-        polarity: component.type === "npn-transistor" ? "npn" : "pnp",
-        beta: component.props.beta,
+        polarity: electrical.polarity,
+        beta: electrical.beta,
+        earlyVoltageVolts: electrical.earlyVoltageVolts,
+        saturationCurrentAmps: electrical.saturationCurrentAmps,
+        forwardEmissionCoefficient: electrical.forwardEmissionCoefficient,
       }
-    case "n-mosfet":
-    case "p-mosfet":
+    case "mosfet":
       return {
         kind: "mosfet",
-        polarity: component.type === "n-mosfet" ? "n" : "p",
-        thresholdVolts: component.props.thresholdVolts,
+        polarity: electrical.polarity,
+        thresholdVolts: electrical.thresholdVolts,
+        transconductanceAmpsPerVoltSquared:
+          electrical.transconductanceAmpsPerVoltSquared,
+        channelLengthModulationPerVolt:
+          electrical.channelLengthModulationPerVolt,
       }
-    case "ideal-op-amp-minus-top":
+    case "ideal-op-amp":
       return {
         kind: "ideal-op-amp",
-        gain: component.props.gain,
-        minOutputVolts: component.props.minOutputVolts,
-        maxOutputVolts: component.props.maxOutputVolts,
+        gain: electrical.gain,
+        minOutputVolts: electrical.minOutputVolts,
+        maxOutputVolts: electrical.maxOutputVolts,
       }
     case "logic-input":
       return {
         kind: "logic-input",
-        position: component.props.position,
-        highVolts: component.props.highLogicVoltageVolts,
-        lowVolts: component.props.lowLogicVoltageVolts,
+        position: electrical.position,
+        highVolts: electrical.highVolts,
+        lowVolts: electrical.lowVolts,
       }
     case "logic-output":
       return {
         kind: "logic-output",
-        thresholdVolts: component.props.thresholdVolts,
-        requiredAmps: component.props.currentRequiredAmps,
+        thresholdVolts: electrical.thresholdVolts,
+        requiredAmps: electrical.requiredAmps,
       }
-    case "and-gate":
-    case "or-gate":
+    case "logic-gate":
       return {
         kind: "logic-gate",
-        operation: component.type === "and-gate" ? "and" : "or",
-        inputCount: component.props.inputCount,
-        highVolts: component.props.highLogicVoltageVolts,
+        operation: electrical.operation,
+        inputCount: electrical.inputCount,
+        highVolts: electrical.highVolts,
       }
     case "inverter":
-      return {
-        kind: "inverter",
-        highVolts: component.props.highLogicVoltageVolts,
+      return { kind: "inverter", highVolts: electrical.highVolts }
+    case "voltage-source":
+      switch (electrical.wave) {
+        case "dc":
+          return { kind: "dc-voltage-source", volts: electrical.volts }
+        case "sine":
+          return {
+            kind: "sine-voltage-source",
+            amplitudeVolts: electrical.amplitude,
+            frequencyHertz: electrical.hertz,
+          }
+        case "pulse":
+          return {
+            kind: "pulse-voltage-source",
+            initialVolts: electrical.initialVolts,
+            pulsedVolts: electrical.pulsedVolts,
+            frequencyHertz: electrical.hertz,
+            dutyCyclePercent: electrical.dutyCyclePercent,
+            delaySeconds: electrical.delaySeconds,
+            riseTimeSeconds: electrical.riseTimeSeconds,
+            fallTimeSeconds: electrical.fallTimeSeconds,
+          }
       }
-    case "resistor":
-    case "capacitor":
-    case "inductor":
+    case "dc-power-rail":
+      return {
+        kind: "dc-power-rail",
+        volts: electrical.volts,
+        referenceNet: electrical.referenceNet,
+      }
+    case "current-source":
+      return { kind: "dc-current-source", amps: electrical.amps }
     case "switch":
-    case "dc-voltage-source":
-    case "sine-voltage-source":
-    case "dc-current-source":
-    case "diode":
-    case "led":
-      throw new Error(`Modeled component ${component.type} cannot be unmodeled`)
+      return { kind: "switch", state: electrical.state }
   }
 }
 
 function modelFidelity(
   behavior: ElectricalBehavior,
 ): "ideal" | "simplified" | "unsupported" {
-  if (behavior.kind === "diode") return "simplified"
+  if (
+    behavior.kind === "diode" ||
+    behavior.kind === "zener-diode" ||
+    behavior.kind === "bipolar-transistor" ||
+    behavior.kind === "mosfet" ||
+    behavior.kind === "ideal-op-amp" ||
+    behavior.kind === "logic-gate" ||
+    behavior.kind === "inverter"
+  ) {
+    return "simplified"
+  }
   return isSpiceUnsupported(behavior) ? "unsupported" : "ideal"
 }
 
 export function isSpiceUnsupported(behavior: ElectricalBehavior): boolean {
   switch (behavior.kind) {
+    case "resistor":
+    case "capacitor":
+    case "inductor":
+    case "diode":
+    case "zener-diode":
     case "bipolar-transistor":
     case "mosfet":
     case "ideal-op-amp":
@@ -303,13 +374,10 @@ export function isSpiceUnsupported(behavior: ElectricalBehavior): boolean {
     case "logic-output":
     case "logic-gate":
     case "inverter":
-      return true
-    case "resistor":
-    case "capacitor":
-    case "inductor":
-    case "diode":
     case "dc-voltage-source":
+    case "dc-power-rail":
     case "sine-voltage-source":
+    case "pulse-voltage-source":
     case "dc-current-source":
     case "switch":
       return false
@@ -325,22 +393,60 @@ function electricalParameters(behavior: ElectricalBehavior): string[] {
     case "inductor":
       return [`L=${formatSiValue(behavior.henries, "H")}`]
     case "diode":
-      return [`model=${behavior.model}`]
+      return [
+        `model=${behavior.model}`,
+        `saturation-current=${formatSiValue(behavior.saturationCurrentAmps, "A")}`,
+        `emission-coefficient=${behavior.emissionCoefficient}`,
+        `series-resistance=${formatSiValue(behavior.seriesResistanceOhms, "Ohm")}`,
+      ]
+    case "zener-diode":
+      return [
+        `breakdown=${formatSiValue(behavior.breakdownVolts, "V")}`,
+        `breakdown-current=${formatSiValue(behavior.breakdownCurrentAmps, "A")}`,
+        `saturation-current=${formatSiValue(behavior.saturationCurrentAmps, "A")}`,
+        `emission-coefficient=${behavior.emissionCoefficient}`,
+        `dynamic-resistance=${formatSiValue(behavior.dynamicResistanceOhms, "Ohm")}`,
+      ]
     case "dc-voltage-source":
       return [`V=${formatSiValue(behavior.volts, "V")}`]
+    case "dc-power-rail":
+      return [
+        `V=${formatSiValue(behavior.volts, "V")}`,
+        `reference=${behavior.referenceNet}`,
+      ]
     case "sine-voltage-source":
       return [
         `peak=${formatSiValue(behavior.amplitudeVolts, "V")}`,
         `frequency=${formatSiValue(behavior.frequencyHertz, "Hz")}`,
+      ]
+    case "pulse-voltage-source":
+      return [
+        `initial=${formatSiValue(behavior.initialVolts, "V")}`,
+        `pulsed=${formatSiValue(behavior.pulsedVolts, "V")}`,
+        `frequency=${formatSiValue(behavior.frequencyHertz, "Hz")}`,
+        `duty=${behavior.dutyCyclePercent}%`,
+        `delay=${formatSiValue(behavior.delaySeconds, "s")}`,
+        `rise=${formatSiValue(behavior.riseTimeSeconds, "s")}`,
+        `fall=${formatSiValue(behavior.fallTimeSeconds, "s")}`,
       ]
     case "dc-current-source":
       return [`I=${formatSiValue(behavior.amps, "A")}`]
     case "switch":
       return [`state=${behavior.state}`]
     case "bipolar-transistor":
-      return [`beta=${behavior.beta}`]
+      return [
+        `polarity=${behavior.polarity}`,
+        `beta=${behavior.beta}`,
+        `early-voltage=${formatSiValue(behavior.earlyVoltageVolts, "V")}`,
+        `saturation-current=${formatSiValue(behavior.saturationCurrentAmps, "A")}`,
+        `forward-emission-coefficient=${behavior.forwardEmissionCoefficient}`,
+      ]
     case "mosfet":
-      return [`threshold=${formatSiValue(behavior.thresholdVolts, "V")}`]
+      return [
+        `threshold=${formatSiValue(behavior.thresholdVolts, "V")}`,
+        `transconductance=${formatSiValue(behavior.transconductanceAmpsPerVoltSquared, "A/V^2")}`,
+        `channel-length-modulation=${formatSiValue(behavior.channelLengthModulationPerVolt, "1/V")}`,
+      ]
     case "ideal-op-amp":
       return [
         `gain=${formatSiValue(behavior.gain)}`,

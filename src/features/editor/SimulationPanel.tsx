@@ -29,6 +29,7 @@ import {
 
 export function SimulationPanel({ runToken }: { runToken: number }) {
   const project = useEditorState((state) => state.project)
+  const latestRun = useEditorState((state) => state.latestRun)
   const runServerSimulation = useServerFn(runSpiceSimulationOnServer)
   const simulationRunAtom = useMemo(
     () => makeSimulationRunAtom(runServerSimulation),
@@ -48,7 +49,7 @@ export function SimulationPanel({ runToken }: { runToken: number }) {
     ? outcome._tag === "Saved"
       ? outcome.run
       : outcome.output
-    : null
+    : latestRun
   const [metric, setMetric] = useState<SignalMetric>("voltage")
   const [target, setTarget] = useState("all")
   const [engine, setEngine] = useState<SpiceEnginePreference>("ngspice")

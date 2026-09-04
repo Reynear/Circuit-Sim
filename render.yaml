@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: circuit-sim-webmcp
+    runtime: docker
+    plan: free
+    healthCheckPath: /workbench

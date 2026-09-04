@@ -4,6 +4,7 @@ import {
   andGate,
   capacitor,
   dcCurrentSource,
+  dcPowerRail,
   dcVoltageSource,
   diode,
   idealOpAmp,
@@ -16,10 +17,12 @@ import {
   npnTransistor,
   orGate,
   pMosfet,
+  pulseVoltageSource,
   pnpTransistor,
   resistor,
   sineVoltageSource,
   switchComponent,
+  zenerDiode,
   type ComponentSpec,
   type ComponentType,
 } from "./components"
@@ -33,6 +36,14 @@ export type Point = typeof PointSchema.Type
 
 export const RotationSchema = Schema.Literals([0, 90, 180, 270])
 export type Rotation = typeof RotationSchema.Type
+
+export const ProjectNameSchema = Schema.String.check(
+  Schema.isMaxLength(120),
+  Schema.isPattern(/^[^\u0000-\u001f\u007f]+$/),
+  Schema.makeFilter((name) =>
+    name.trim().length > 0 ? undefined : "Project name cannot be blank",
+  ),
+)
 
 const ComponentBase = {
   kind: Schema.Literal("component"),
@@ -60,9 +71,12 @@ const ComponentUnion = Schema.Union([
   componentSchema(inductor),
   componentSchema(switchComponent),
   componentSchema(dcVoltageSource),
+  componentSchema(dcPowerRail),
   componentSchema(sineVoltageSource),
+  componentSchema(pulseVoltageSource),
   componentSchema(dcCurrentSource),
   componentSchema(diode),
+  componentSchema(zenerDiode),
   componentSchema(led),
   componentSchema(npnTransistor),
   componentSchema(pnpTransistor),
@@ -74,7 +88,20 @@ const ComponentUnion = Schema.Union([
   componentSchema(andGate),
   componentSchema(orGate),
   componentSchema(inverter),
-])
+]).check(
+  Schema.makeFilter((component) =>
+    component.type === "ideal-op-amp-minus-top" &&
+    component.props.minOutputVolts >= component.props.maxOutputVolts
+      ? "Op amp minimum output voltage must be below its maximum output voltage"
+      : component.type === "logic-input" &&
+          component.props.lowLogicVoltageVolts >= component.props.highLogicVoltageVolts
+        ? "Logic input low voltage must be below its high voltage"
+        : component.type === "pulse-voltage-source" &&
+            component.props.initialVoltageVolts === component.props.pulsedVoltageVolts
+          ? "Pulse source initial and pulsed voltages must differ"
+        : undefined,
+  ),
+)
 
 export const ComponentSchema = ComponentUnion
 export type Component = typeof ComponentSchema.Type
@@ -175,7 +202,7 @@ export type TransientAnalysis = typeof TransientAnalysisSchema.Type
 
 const CircuitProjectDataSchema = Schema.Struct({
   id: IdSchema,
-  name: Schema.NonEmptyString,
+  name: ProjectNameSchema,
   objects: Schema.Array(SchematicObjectSchema),
   analysis: TransientAnalysisSchema,
   createdAt: Schema.DateTimeUtcFromString,

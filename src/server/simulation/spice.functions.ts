@@ -13,7 +13,7 @@ const SpiceSimulationInputSchema = Schema.Struct({
 })
 
 export const runSpiceSimulationOnServer = createServerFn({ method: "POST" })
-  .inputValidator((raw: unknown) =>
+  .validator((raw: unknown) =>
     Schema.decodeUnknownSync(SpiceSimulationInputSchema, {
       onExcessProperty: "error",
     })(raw),

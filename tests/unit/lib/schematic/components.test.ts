@@ -13,5 +13,28 @@ describe("component catalog", () => {
       "collector",
       "emitter",
     ])
+    expect(getComponent("pulse-voltage-source").terminals.map((pin) => pin.key))
+      .toEqual(["positive", "negative"])
+    expect(
+      getComponent("pulse-voltage-source").electrical({
+        initialVoltageVolts: 0,
+        pulsedVoltageVolts: 5,
+        frequencyHertz: 1_000,
+        dutyCyclePercent: 25,
+        delaySeconds: 0,
+        riseTimeSeconds: 1e-8,
+        fallTimeSeconds: 1e-8,
+      }),
+    ).toEqual({
+      kind: "voltage-source",
+      wave: "pulse",
+      initialVolts: 0,
+      pulsedVolts: 5,
+      hertz: 1_000,
+      dutyCyclePercent: 25,
+      delaySeconds: 0,
+      riseTimeSeconds: 1e-8,
+      fallTimeSeconds: 1e-8,
+    })
   })
 })

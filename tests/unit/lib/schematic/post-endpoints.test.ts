@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  getPrimaryComponentPosts,
   getNormalComponentHandles,
   getVisiblePosts,
   getWirePostIndexes,
@@ -32,6 +33,23 @@ describe("schematic posts", () => {
     expect(getNormalComponentHandles(resistor()).map((post) => post.position)).toEqual([
       { x: -40, y: 0 },
       { x: 40, y: 0 },
+    ])
+  })
+
+  it("does not duplicate the sole handle of a one-terminal power rail", () => {
+    const rail: Component = {
+      kind: "component",
+      id: "vcc",
+      type: "dc-power-rail",
+      refdes: "VCC",
+      position: { x: 0, y: 0 },
+      rotation: 0,
+      flipped: false,
+      props: { voltageVolts: 5 },
+    }
+
+    expect(getPrimaryComponentPosts(rail)).toEqual([
+      expect.objectContaining({ pin: "rail", position: { x: 0, y: 40 } }),
     ])
   })
 })

@@ -44,9 +44,9 @@ export function getWirePostIndexes(wire: WireObject): [number, number] {
 
 export function getPrimaryComponentPosts(
   component: Component,
-): [ComponentPost, ComponentPost] {
+): ComponentPost[] {
   const posts = getPinPosts(component)
-  return [posts[0]!, posts.at(-1)!]
+  return posts.length <= 2 ? posts : [posts[0]!, posts.at(-1)!]
 }
 
 export function getTemporaryComponentHandles(component: Component): Point[] {

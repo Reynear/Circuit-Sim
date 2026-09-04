@@ -101,6 +101,9 @@ function ProjectDashboardContent() {
           <p>Local IndexedDB-backed circuit documents.</p>
         </div>
         <div className="button-row">
+          <Link className="button primary" to="/workbench">
+            Agent Workbench
+          </Link>
           <button
             className="button primary"
             data-testid="new-empty-project"

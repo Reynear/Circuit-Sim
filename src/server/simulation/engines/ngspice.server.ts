@@ -15,6 +15,7 @@ import type { SpiceRuntimeLimits } from "../runtime-limits"
 import type { SimulationOutput } from "@circuit-sim/core/simulation/result"
 import {
   buildTranSignals,
+  InvalidSignalSeries,
   type SignalElement,
   type Signals,
 } from "@circuit-sim/core/simulation/signals"
@@ -136,7 +137,7 @@ async function runNgspiceCli(
       ...parsed.warnings,
       ...classified.warnings,
     ]
-    const signals = ngspiceSignals(parsed.series, build)
+    const signals = buildNgspiceSignals(parsed.series, build)
     return {
       engine: "ngspice",
       circuitHash,
@@ -160,7 +161,7 @@ async function runNgspiceCli(
       },
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
+    const message = simulationErrorMessage(error)
     const output = errorOutput(error)
     const classified = classifyNgspiceDiagnostics(`${message}\n${output}`)
     return {
@@ -188,6 +189,14 @@ async function runNgspiceCli(
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
+}
+
+function simulationErrorMessage(error: unknown): string {
+  if (error instanceof InvalidSignalSeries) {
+    return `${error.series} ${error.reason}`
+  }
+  if (error instanceof Error && error.message) return error.message
+  return String(error)
 }
 
 async function findNgspiceBinary(): Promise<string | null> {
@@ -281,10 +290,16 @@ function classifyNgspiceDiagnostics(output: string): {
  * signals through the shared builder, so both engines produce identical
  * conventions.
  */
-function ngspiceSignals(
+export function buildNgspiceSignals(
   series: ReadonlyArray<ParsedSignalSeries>,
   build: ReturnType<typeof generateSpiceNetlist>,
 ): Signals {
+  const canonicalNodeName = new Map(
+    [...build.nodeNameByNetName.values()].map((name) => [
+      name.toLowerCase(),
+      name,
+    ]),
+  )
   const nodeVoltages: Array<{
     nodeName: string
     values: ReadonlyArray<number>
@@ -294,28 +309,11 @@ function ngspiceSignals(
     const voltageMatch = /^v\(([^)]+)\)$/.exec(entry.expression)
     if (voltageMatch) {
       nodeVoltages.push({
-        nodeName: voltageMatch[1]!,
+        nodeName:
+          canonicalNodeName.get(voltageMatch[1]!.toLowerCase()) ??
+          voltageMatch[1]!,
         values: entry.points.map((point) => point.v),
       })
-      if (times.length === 0) {
-        times.push(...entry.points.map((point) => point.t))
-      }
-    }
-  }
-
-  const currentByElement = new Map<SpiceElementBinding, ReadonlyArray<number>>()
-  for (const element of build.elements) {
-    if (!element.currentExpression) {
-      continue
-    }
-    const expression = normalizeExpression(element.currentExpression)
-    const alias = normalizeExpression(`I(${element.spiceName})`)
-    const entry = series.find(
-      (candidate) =>
-        candidate.expression === expression || candidate.expression === alias,
-    )
-    if (entry) {
-      currentByElement.set(element, entry.points.map((point) => point.v))
       if (times.length === 0) {
         times.push(...entry.points.map((point) => point.t))
       }
@@ -326,18 +324,50 @@ function ngspiceSignals(
     return []
   }
 
-  const elementCurrents = [...currentByElement.entries()].map(
-    ([element, current]) => ({
-      element: {
-        refdes: element.refdes,
-        pin1Label: element.pin1Label,
-        pin2Label: element.pin2Label,
-        n1: element.n1,
-        n2: element.n2,
-      } satisfies SignalElement,
-      current,
-    }),
-  )
+  const elementCurrents = build.elements.flatMap((element) => {
+    const elementCurrentExpressions = new Set(
+      element.terminals.flatMap((terminal) =>
+        terminal.currentExpression
+          ? [normalizeExpression(terminal.currentExpression)]
+          : [],
+      ),
+    )
+    const terminalCurrents = element.terminals.flatMap((terminal) => {
+      if (terminal.constantCurrent !== undefined) {
+        const value = terminal.negate
+          ? -terminal.constantCurrent
+          : terminal.constantCurrent
+        return [{ label: terminal.label, current: times.map(() => value) }]
+      }
+      if (!terminal.currentExpression) return []
+      const expression = normalizeExpression(terminal.currentExpression)
+      const alias = normalizeExpression(`I(${element.spiceName})`)
+      const entry = series.find(
+        (candidate) =>
+          candidate.expression === expression ||
+          candidate.expression === `i(${expression})` ||
+          (elementCurrentExpressions.size === 1 && candidate.expression === alias),
+      )
+      return entry
+        ? [{
+            label: terminal.label,
+            current: entry.points.map((point) =>
+              terminal.negate ? -point.v : point.v,
+            ),
+          }]
+        : []
+    })
+    const signalElement: SignalElement = {
+      refdes: element.refdes,
+      terminals: element.terminals.map((terminal) => ({
+        label: terminal.label,
+        node: terminal.node,
+      })),
+    }
+    return terminalCurrents.length > 0
+      ? [{ element: signalElement, terminalCurrents }]
+      : []
+  })
 
   return buildTranSignals({
     times,

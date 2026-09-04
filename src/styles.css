@@ -554,23 +554,33 @@ a {
 }
 
 .symbol-fill {
-  fill: var(--canvas-background-color, #000000);
+  fill: var(--symbol-dynamic-stroke, var(--canvas-muted-color, #d7d7d7));
   stroke: var(--symbol-dynamic-stroke, var(--canvas-muted-color, #d7d7d7));
   stroke-width: 2;
 }
 
 .component.selected .symbol-stroke,
+.component.selected .symbol-fill,
 .component.selected line,
 .component.selected .symbol-body,
 .component.selected .pin-dot {
   stroke: var(--selection-color, #00ffff);
 }
 
+.component.selected .symbol-fill {
+  fill: var(--selection-color, #00ffff);
+}
+
 .component.net-highlight .symbol-stroke,
+.component.net-highlight .symbol-fill,
 .component.net-highlight line,
 .component.net-highlight .symbol-body,
 .component.net-highlight .pin-dot {
   stroke: var(--selection-color, #00ffff);
+}
+
+.component.net-highlight .symbol-fill {
+  fill: var(--selection-color, #00ffff);
 }
 
 .symbol-label {
@@ -1386,6 +1396,35 @@ rect.annotation-hit-area {
   font-size: 12px;
   font-weight: 800;
   box-shadow: 0 14px 36px rgba(0, 0, 0, 0.32);
+}
+
+.webmcp-status {
+  position: fixed;
+  top: 8px;
+  left: 50%;
+  z-index: 18;
+  transform: translateX(-50%);
+  border: 1px solid #68712e;
+  border-radius: 999px;
+  background: #252913;
+  color: #f3f59b;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 800;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+}
+
+.webmcp-status.error {
+  border-color: #8f5d5d;
+  background: #452626;
+  color: #ffd4d4;
+}
+
+.agent-activity-toast {
+  bottom: 52px;
+  border-color: #68712e;
+  color: #f3f59b;
 }
 
 

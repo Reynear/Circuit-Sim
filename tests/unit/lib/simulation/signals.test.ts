@@ -16,12 +16,15 @@ const validInput = {
     {
       element: {
         refdes: "R1",
-        pin1Label: "1",
-        pin2Label: "2",
-        n1: "n1",
-        n2: "0",
+        terminals: [
+          { label: "1", node: "n1" },
+          { label: "2", node: "0" },
+        ],
       },
-      current: [0.005, 0.004],
+      terminalCurrents: [
+        { label: "1", current: [0.005, 0.004] },
+        { label: "2", current: [-0.005, -0.004] },
+      ],
     },
   ],
 } as const
@@ -55,6 +58,45 @@ describe("canonical simulation signals", () => {
         reason: "has 1 samples; expected 2",
       }),
     )
+  })
+
+  it("builds independent BJT terminal currents and total device power", () => {
+    const signals = buildTranSignals({
+      times: [0],
+      nodeVoltages: [
+        { nodeName: "collector", values: [10] },
+        { nodeName: "base", values: [0.7] },
+      ],
+      nodeNetNames: [
+        { nodeName: "0", netName: "GND" },
+        { nodeName: "collector", netName: "COLLECTOR" },
+        { nodeName: "base", netName: "BASE" },
+      ],
+      elementCurrents: [
+        {
+          element: {
+            refdes: "Q1",
+            terminals: [
+              { label: "C", node: "collector" },
+              { label: "B", node: "base" },
+              { label: "E", node: "0" },
+            ],
+          },
+          terminalCurrents: [
+            { label: "C", current: [0.001] },
+            { label: "B", current: [0.00001] },
+            { label: "E", current: [-0.00101] },
+          ],
+        },
+      ],
+    })
+
+    expect(signals.find((signal) => signal.name === "I(Q1.B)")?.points[0]?.v)
+      .toBe(0.00001)
+    expect(signals.find((signal) => signal.name === "I(Q1.E)")?.points[0]?.v)
+      .toBe(-0.00101)
+    expect(signals.find((signal) => signal.name === "P(Q1)")?.points[0]?.v)
+      .toBeCloseTo(0.010007)
   })
 
   it("rejects missing terminal voltages instead of substituting zero", () => {

@@ -104,8 +104,61 @@ export type ElectricalSpec =
     }
   | {
       readonly kind: "diode"
-      readonly defaultModel: "DDEFAULT" | "DLED"
+      readonly defaultModel: "DDEFAULT" | "DLED" | "DLED_GREEN" | "DLED_BLUE"
       readonly model?: string
+      readonly saturationCurrentAmps: number
+      readonly emissionCoefficient: number
+      readonly seriesResistanceOhms: number
+    }
+  | {
+      readonly kind: "zener-diode"
+      readonly breakdownVolts: number
+      readonly breakdownCurrentAmps: number
+      readonly saturationCurrentAmps: number
+      readonly emissionCoefficient: number
+      readonly dynamicResistanceOhms: number
+    }
+  | {
+      readonly kind: "bipolar-transistor"
+      readonly polarity: "npn" | "pnp"
+      readonly beta: number
+      readonly earlyVoltageVolts: number
+      readonly saturationCurrentAmps: number
+      readonly forwardEmissionCoefficient: number
+    }
+  | {
+      readonly kind: "mosfet"
+      readonly polarity: "n" | "p"
+      readonly thresholdVolts: number
+      readonly transconductanceAmpsPerVoltSquared: number
+      readonly channelLengthModulationPerVolt: number
+    }
+  | {
+      readonly kind: "ideal-op-amp"
+      readonly gain: number
+      readonly minOutputVolts: number
+      readonly maxOutputVolts: number
+    }
+  | {
+      readonly kind: "logic-input"
+      readonly position: 0 | 1 | 2
+      readonly highVolts: number
+      readonly lowVolts: number
+    }
+  | {
+      readonly kind: "logic-output"
+      readonly thresholdVolts: number
+      readonly requiredAmps: number
+    }
+  | {
+      readonly kind: "logic-gate"
+      readonly operation: "and" | "or"
+      readonly inputCount: 2
+      readonly highVolts: number
+    }
+  | {
+      readonly kind: "inverter"
+      readonly highVolts: number
     }
   | {
       readonly kind: "voltage-source"
@@ -113,10 +166,27 @@ export type ElectricalSpec =
       readonly volts: number
     }
   | {
+      /** A one-terminal DC rail whose other terminal is canonical GND. */
+      readonly kind: "dc-power-rail"
+      readonly volts: number
+      readonly referenceNet: "GND"
+    }
+  | {
       readonly kind: "voltage-source"
       readonly wave: "sine"
       readonly amplitude: number
       readonly hertz: number
+    }
+  | {
+      readonly kind: "voltage-source"
+      readonly wave: "pulse"
+      readonly initialVolts: number
+      readonly pulsedVolts: number
+      readonly hertz: number
+      readonly dutyCyclePercent: number
+      readonly delaySeconds: number
+      readonly riseTimeSeconds: number
+      readonly fallTimeSeconds: number
     }
   | {
       readonly kind: "current-source"
@@ -127,7 +197,6 @@ export type ElectricalSpec =
       readonly kind: "switch"
       readonly state: "open" | "closed"
     }
-  | { readonly kind: "unmodeled" }
 
 export type ComponentGroup =
   | "passive"
@@ -245,9 +314,15 @@ function terminal(
 
 const Finite = Schema.Number.check(Schema.isFinite())
 const Positive = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0))
+const Negative = Schema.Number.check(Schema.isFinite(), Schema.isLessThan(0))
 const NonNegative = Schema.Number.check(
   Schema.isFinite(),
   Schema.isGreaterThanOrEqualTo(0),
+)
+const DutyCyclePercent = Schema.Number.check(
+  Schema.isFinite(),
+  Schema.isGreaterThan(0),
+  Schema.isLessThan(100),
 )
 const LogicPosition = Schema.Literals([0, 1, 2])
 
@@ -373,6 +448,28 @@ export const dcVoltageSource = defineComponent({
   terminals: sourceTerminals(),
 })
 
+export const dcPowerRail = defineComponent({
+  type: "dc-power-rail",
+  name: "DC Power Rail",
+  group: "source",
+  prefix: "V",
+  properties: {
+    voltageVolts: {
+      schema: Finite,
+      default: 5,
+      label: "Voltage to GND",
+      input: "si",
+      unit: "V",
+    },
+  },
+  electrical: ({ voltageVolts }) => ({
+    kind: "dc-power-rail",
+    volts: voltageVolts,
+    referenceNet: "GND",
+  }),
+  terminals: [terminal("rail", "RAIL", "power", 0, 40)],
+})
+
 export const sineVoltageSource = defineComponent({
   type: "sine-voltage-source",
   name: "Sine Voltage Source",
@@ -400,6 +497,84 @@ export const sineVoltageSource = defineComponent({
     wave: "sine",
     amplitude: amplitudeVolts,
     hertz: frequencyHertz,
+  }),
+  terminals: sourceTerminals(),
+})
+
+export const pulseVoltageSource = defineComponent({
+  type: "pulse-voltage-source",
+  name: "Pulse / PWM Voltage Source",
+  group: "source",
+  prefix: "V",
+  properties: {
+    initialVoltageVolts: {
+      schema: Finite,
+      default: 0,
+      label: "Initial voltage",
+      input: "si",
+      unit: "V",
+    },
+    pulsedVoltageVolts: {
+      schema: Finite,
+      default: 5,
+      label: "Pulsed voltage",
+      input: "si",
+      unit: "V",
+    },
+    frequencyHertz: {
+      schema: Positive,
+      default: 20_000,
+      label: "Frequency",
+      input: "si",
+      unit: "Hz",
+    },
+    dutyCyclePercent: {
+      schema: DutyCyclePercent,
+      default: 50,
+      label: "Duty cycle",
+      input: "number",
+      unit: "%",
+    },
+    delaySeconds: {
+      schema: NonNegative,
+      default: 0,
+      label: "Delay",
+      input: "si",
+      unit: "s",
+    },
+    riseTimeSeconds: {
+      schema: NonNegative,
+      default: 1e-9,
+      label: "Rise time",
+      input: "si",
+      unit: "s",
+    },
+    fallTimeSeconds: {
+      schema: NonNegative,
+      default: 1e-9,
+      label: "Fall time",
+      input: "si",
+      unit: "s",
+    },
+  },
+  electrical: ({
+    initialVoltageVolts,
+    pulsedVoltageVolts,
+    frequencyHertz,
+    dutyCyclePercent,
+    delaySeconds,
+    riseTimeSeconds,
+    fallTimeSeconds,
+  }) => ({
+    kind: "voltage-source",
+    wave: "pulse",
+    initialVolts: initialVoltageVolts,
+    pulsedVolts: pulsedVoltageVolts,
+    hertz: frequencyHertz,
+    dutyCyclePercent,
+    delaySeconds,
+    riseTimeSeconds,
+    fallTimeSeconds,
   }),
   terminals: sourceTerminals(),
 })
@@ -446,14 +621,148 @@ export const diode = defineComponent({
       label: "Model",
       input: "text",
     },
+    saturationCurrentAmps: {
+      schema: Positive,
+      default: 1e-14,
+      label: "Saturation current",
+      input: "si",
+      unit: "A",
+    },
+    emissionCoefficient: {
+      schema: Positive,
+      default: 1,
+      label: "Emission coefficient",
+      input: "number",
+    },
+    seriesResistanceOhms: {
+      schema: NonNegative,
+      default: 0,
+      label: "Series resistance",
+      input: "si",
+      unit: "Ohm",
+    },
   },
-  electrical: ({ model }) => ({
+  electrical: ({
+    model,
+    saturationCurrentAmps,
+    emissionCoefficient,
+    seriesResistanceOhms,
+  }) => ({
     kind: "diode",
     defaultModel: "DDEFAULT",
     model,
+    saturationCurrentAmps,
+    emissionCoefficient,
+    seriesResistanceOhms,
   }),
   terminals: diodeTerminals(),
 })
+
+export const zenerDiode = defineComponent({
+  type: "zener-diode",
+  name: "Zener Diode",
+  group: "semiconductor",
+  prefix: "DZ",
+  properties: {
+    breakdownVolts: {
+      schema: Positive,
+      default: 5.1,
+      label: "Breakdown voltage",
+      input: "si",
+      unit: "V",
+    },
+    breakdownCurrentAmps: {
+      schema: Positive,
+      default: 0.001,
+      label: "Breakdown current",
+      input: "si",
+      unit: "A",
+    },
+    saturationCurrentAmps: {
+      schema: Positive,
+      default: 1e-14,
+      label: "Saturation current",
+      input: "si",
+      unit: "A",
+    },
+    emissionCoefficient: {
+      schema: Positive,
+      default: 1,
+      label: "Emission coefficient",
+      input: "number",
+    },
+    dynamicResistanceOhms: {
+      schema: Positive,
+      default: 10,
+      label: "Dynamic resistance",
+      input: "si",
+      unit: "Ohm",
+    },
+  },
+  electrical: ({
+    breakdownVolts,
+    breakdownCurrentAmps,
+    saturationCurrentAmps,
+    emissionCoefficient,
+    dynamicResistanceOhms,
+  }) => ({
+    kind: "zener-diode",
+    breakdownVolts,
+    breakdownCurrentAmps,
+    saturationCurrentAmps,
+    emissionCoefficient,
+    dynamicResistanceOhms,
+  }),
+  terminals: diodeTerminals(),
+})
+
+export function ledModelForColor(
+  color: string,
+): "DLED" | "DLED_GREEN" | "DLED_BLUE" {
+  switch (color.trim().toLowerCase()) {
+    case "blue":
+    case "cyan":
+    case "white":
+      return "DLED_BLUE"
+    case "green":
+      return "DLED_GREEN"
+    default:
+      return "DLED"
+  }
+}
+
+export function diodeModelParameters(model: string): {
+  readonly saturationCurrentAmps: number
+  readonly emissionCoefficient: number
+  readonly seriesResistanceOhms: number
+} {
+  switch (model.trim().toUpperCase()) {
+    case "DLED_BLUE":
+      return {
+        saturationCurrentAmps: 1e-30,
+        emissionCoefficient: 2,
+        seriesResistanceOhms: 0,
+      }
+    case "DLED_GREEN":
+      return {
+        saturationCurrentAmps: 1e-24,
+        emissionCoefficient: 2,
+        seriesResistanceOhms: 0,
+      }
+    case "DLED":
+      return {
+        saturationCurrentAmps: 1e-18,
+        emissionCoefficient: 2,
+        seriesResistanceOhms: 0,
+      }
+    default:
+      return {
+        saturationCurrentAmps: 1e-14,
+        emissionCoefficient: 1,
+        seriesResistanceOhms: 0,
+      }
+  }
+}
 
 export const led = defineComponent({
   type: "led",
@@ -469,7 +778,14 @@ export const led = defineComponent({
       input: "text",
     },
   },
-  electrical: () => ({ kind: "diode", defaultModel: "DLED" }),
+  electrical: ({ color }) => {
+    const defaultModel = ledModelForColor(color)
+    return {
+      kind: "diode",
+      defaultModel,
+      ...diodeModelParameters(defaultModel),
+    }
+  },
   terminals: diodeTerminals(),
 })
 
@@ -492,8 +808,40 @@ export const npnTransistor = defineComponent({
       label: "Beta",
       input: "number",
     },
+    earlyVoltageVolts: {
+      schema: Positive,
+      default: 100,
+      label: "Early voltage",
+      input: "si",
+      unit: "V",
+    },
+    saturationCurrentAmps: {
+      schema: Positive,
+      default: 1e-15,
+      label: "Saturation current",
+      input: "si",
+      unit: "A",
+    },
+    forwardEmissionCoefficient: {
+      schema: Positive,
+      default: 1,
+      label: "Forward emission coefficient",
+      input: "number",
+    },
   },
-  electrical: () => ({ kind: "unmodeled" }),
+  electrical: ({
+    beta,
+    earlyVoltageVolts,
+    saturationCurrentAmps,
+    forwardEmissionCoefficient,
+  }) => ({
+    kind: "bipolar-transistor",
+    polarity: "npn",
+    beta,
+    earlyVoltageVolts,
+    saturationCurrentAmps,
+    forwardEmissionCoefficient,
+  }),
   terminals: transistorTerminals(),
 })
 
@@ -509,8 +857,40 @@ export const pnpTransistor = defineComponent({
       label: "Beta",
       input: "number",
     },
+    earlyVoltageVolts: {
+      schema: Positive,
+      default: 100,
+      label: "Early voltage",
+      input: "si",
+      unit: "V",
+    },
+    saturationCurrentAmps: {
+      schema: Positive,
+      default: 1e-15,
+      label: "Saturation current",
+      input: "si",
+      unit: "A",
+    },
+    forwardEmissionCoefficient: {
+      schema: Positive,
+      default: 1,
+      label: "Forward emission coefficient",
+      input: "number",
+    },
   },
-  electrical: () => ({ kind: "unmodeled" }),
+  electrical: ({
+    beta,
+    earlyVoltageVolts,
+    saturationCurrentAmps,
+    forwardEmissionCoefficient,
+  }) => ({
+    kind: "bipolar-transistor",
+    polarity: "pnp",
+    beta,
+    earlyVoltageVolts,
+    saturationCurrentAmps,
+    forwardEmissionCoefficient,
+  }),
   terminals: transistorTerminals(),
 })
 
@@ -529,14 +909,38 @@ export const nMosfet = defineComponent({
   prefix: "M",
   properties: {
     thresholdVolts: {
-      schema: Finite,
+      schema: Positive,
       default: 2,
       label: "Threshold voltage",
       input: "si",
       unit: "V",
     },
+    transconductanceAmpsPerVoltSquared: {
+      schema: Positive,
+      default: 0.05,
+      label: "Transconductance parameter",
+      input: "si",
+      unit: "A/V^2",
+    },
+    channelLengthModulationPerVolt: {
+      schema: NonNegative,
+      default: 0.02,
+      label: "Channel-length modulation",
+      input: "si",
+      unit: "1/V",
+    },
   },
-  electrical: () => ({ kind: "unmodeled" }),
+  electrical: ({
+    thresholdVolts,
+    transconductanceAmpsPerVoltSquared,
+    channelLengthModulationPerVolt,
+  }) => ({
+    kind: "mosfet",
+    polarity: "n",
+    thresholdVolts,
+    transconductanceAmpsPerVoltSquared,
+    channelLengthModulationPerVolt,
+  }),
   terminals: mosfetTerminals(),
 })
 
@@ -547,14 +951,38 @@ export const pMosfet = defineComponent({
   prefix: "M",
   properties: {
     thresholdVolts: {
-      schema: Finite,
+      schema: Negative,
       default: -2,
       label: "Threshold voltage",
       input: "si",
       unit: "V",
     },
+    transconductanceAmpsPerVoltSquared: {
+      schema: Positive,
+      default: 0.05,
+      label: "Transconductance parameter",
+      input: "si",
+      unit: "A/V^2",
+    },
+    channelLengthModulationPerVolt: {
+      schema: NonNegative,
+      default: 0.02,
+      label: "Channel-length modulation",
+      input: "si",
+      unit: "1/V",
+    },
   },
-  electrical: () => ({ kind: "unmodeled" }),
+  electrical: ({
+    thresholdVolts,
+    transconductanceAmpsPerVoltSquared,
+    channelLengthModulationPerVolt,
+  }) => ({
+    kind: "mosfet",
+    polarity: "p",
+    thresholdVolts,
+    transconductanceAmpsPerVoltSquared,
+    channelLengthModulationPerVolt,
+  }),
   terminals: mosfetTerminals(),
 })
 
@@ -593,7 +1021,12 @@ export const idealOpAmp = defineComponent({
       input: "number",
     },
   },
-  electrical: () => ({ kind: "unmodeled" }),
+  electrical: ({ gain, minOutputVolts, maxOutputVolts }) => ({
+    kind: "ideal-op-amp",
+    gain,
+    minOutputVolts,
+    maxOutputVolts,
+  }),
   terminals: [
     terminal("inverting", "-", "input", -48, -18),
     terminal("nonInverting", "+", "input", -48, 18),
@@ -642,8 +1075,16 @@ export const logicInput = defineComponent({
       input: "boolean",
     },
   },
-  electrical: () => ({ kind: "unmodeled" }),
-  terminals: [terminal("output", "OUT", "output", 36, 0)],
+  electrical: ({ position, highLogicVoltageVolts, lowLogicVoltageVolts }) => ({
+    kind: "logic-input",
+    position,
+    highVolts: highLogicVoltageVolts,
+    lowVolts: lowLogicVoltageVolts,
+  }),
+  terminals: [
+    terminal("output", "OUT", "output", 36, 0),
+    terminal("reference", "REF", "reference", 0, 36),
+  ],
 })
 
 export type LogicInputPosition = typeof logicInput.defaults.position
@@ -669,8 +1110,15 @@ export const logicOutput = defineComponent({
       unit: "A",
     },
   },
-  electrical: () => ({ kind: "unmodeled" }),
-  terminals: [terminal("input", "IN", "input", -36, 0)],
+  electrical: ({ thresholdVolts, currentRequiredAmps }) => ({
+    kind: "logic-output",
+    thresholdVolts,
+    requiredAmps: currentRequiredAmps,
+  }),
+  terminals: [
+    terminal("input", "IN", "input", -36, 0),
+    terminal("reference", "REF", "reference", 0, 36),
+  ],
 })
 
 export const andGate = defineComponent({
@@ -680,24 +1128,28 @@ export const andGate = defineComponent({
   prefix: "U",
   properties: {
     inputCount: {
-      schema: Schema.Literals([2, 3]),
+      schema: Schema.Literal(2),
       default: 2,
       label: "Inputs",
       input: "enum",
       options: [
         { label: "2", value: 2 },
-        { label: "3", value: 3 },
       ],
     },
     highLogicVoltageVolts: {
-      schema: Finite,
+      schema: Positive,
       default: 5,
       label: "High voltage",
       input: "si",
       unit: "V",
     },
   },
-  electrical: () => ({ kind: "unmodeled" }),
+  electrical: ({ inputCount, highLogicVoltageVolts }) => ({
+    kind: "logic-gate",
+    operation: "and",
+    inputCount,
+    highVolts: highLogicVoltageVolts,
+  }),
   terminals: gateTerminals(),
 })
 
@@ -708,24 +1160,28 @@ export const orGate = defineComponent({
   prefix: "U",
   properties: {
     inputCount: {
-      schema: Schema.Literals([2, 3]),
+      schema: Schema.Literal(2),
       default: 2,
       label: "Inputs",
       input: "enum",
       options: [
         { label: "2", value: 2 },
-        { label: "3", value: 3 },
       ],
     },
     highLogicVoltageVolts: {
-      schema: Finite,
+      schema: Positive,
       default: 5,
       label: "High voltage",
       input: "si",
       unit: "V",
     },
   },
-  electrical: () => ({ kind: "unmodeled" }),
+  electrical: ({ inputCount, highLogicVoltageVolts }) => ({
+    kind: "logic-gate",
+    operation: "or",
+    inputCount,
+    highVolts: highLogicVoltageVolts,
+  }),
   terminals: gateTerminals(),
 })
 
@@ -734,6 +1190,7 @@ function gateTerminals() {
     terminal("a", "A", "input", -44, -16),
     terminal("b", "B", "input", -44, 16),
     terminal("output", "Y", "output", 44, 0),
+    terminal("reference", "REF", "reference", 0, 36),
   ]
 }
 
@@ -744,17 +1201,21 @@ export const inverter = defineComponent({
   prefix: "U",
   properties: {
     highLogicVoltageVolts: {
-      schema: Finite,
+      schema: Positive,
       default: 5,
       label: "High voltage",
       input: "si",
       unit: "V",
     },
   },
-  electrical: () => ({ kind: "unmodeled" }),
+  electrical: ({ highLogicVoltageVolts }) => ({
+    kind: "inverter",
+    highVolts: highLogicVoltageVolts,
+  }),
   terminals: [
     terminal("input", "A", "input", -40, 0),
     terminal("output", "Y", "output", 40, 0),
+    terminal("reference", "REF", "reference", 0, 36),
   ],
 })
 
@@ -764,9 +1225,12 @@ const componentByType = {
   inductor,
   switch: switchComponent,
   "dc-voltage-source": dcVoltageSource,
+  "dc-power-rail": dcPowerRail,
   "sine-voltage-source": sineVoltageSource,
+  "pulse-voltage-source": pulseVoltageSource,
   "dc-current-source": dcCurrentSource,
   diode,
+  "zener-diode": zenerDiode,
   led,
   "npn-transistor": npnTransistor,
   "pnp-transistor": pnpTransistor,
